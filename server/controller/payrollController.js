@@ -785,7 +785,7 @@ const generatePayslipPDF = async (req, res) => {
       { align: "right" }
     );
     doc.text(
-      `Payment Date: ${entry.payment_date || "Pending"}`,
+      `Payment Date: ${new Date(entry.payment_date).toLocaleDateString() || "Pending"}`,
       pageWidth - 20,
       35,
       { align: "right" }

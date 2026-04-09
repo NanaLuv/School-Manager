@@ -530,8 +530,12 @@ router.post(
   authorizeRoles(1, 4),
   processPayrollPeriod,
 );
-router.get("/payroll/report/:period_id", generatePayrollReport);
-router.get("/payroll/payslip/:id", generatePayslipPDF);
+router.get(
+  "/payroll/report/:period_id",
+  authorizeRoles(1, 4),
+  generatePayrollReport,
+);
+router.get("/payroll/payslip/:id", authorizeRoles(1, 4), generatePayslipPDF);
 router.get("/payroll/previous-entry/:staff_id", getPreviousPayrollEntry);
 router.post("/payroll/copy-previous/:period_id", copyEntriesFromPreviousPeriod);
 router.get("/payroll/entry/:id", getPayrollEntryById);
