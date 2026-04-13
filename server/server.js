@@ -3,6 +3,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const pool = require("./db");
 const router = require("./router/routes");
+const path = require("path");
 dotenv.config();
 
 const app = express();
@@ -35,7 +36,7 @@ app.use("/uploads/school-logo", express.static("uploads/school-logo"));
 
 // For production, serve static files if needed
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../client/build")));
+  // app.use(express.static(path.join(__dirname, "../client/build")));
   app.get("*", (req, res) => {
     res.sendFile(path.join(__dirname, "../client/build", "index.html"));
   });
