@@ -1,3 +1,5 @@
 .env
 node_modules/
 ../client/
+test-arkesel.js
+test-sms.js
