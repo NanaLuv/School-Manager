@@ -3,10 +3,10 @@ import axios from "axios";
 
 const api = axios.create({
   // baseURL: "http://localhost:3001/schmgt",
-  baseURL: `${process.env.REACT_APP_BACKEND_URL}/schmgt`,
+  baseURL:
+    `${process.env.REACT_APP_BACKEND_URL}/schmgt` ||
+    "https://school-manager-production-0299.up.railway.app/schmgt",
 });
-
-
 
 // Request interceptor - adds token to every request
 api.interceptors.request.use(
@@ -15,7 +15,8 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     } else {
-      console.warn("No token found in localStorage");}
+      console.warn("No token found in localStorage");
+    }
 
     return config;
   },
@@ -28,12 +29,10 @@ api.interceptors.request.use(
 // Response interceptor - handles 401 errors
 api.interceptors.response.use(
   (response) => {
-    
     return response;
   },
   (error) => {
     if (error.response?.status === 401) {
-
       // Check what the error message is
       const errorMsg = error.response.data?.error || "Unknown error";
       console.warn("Received 401 Unauthorized:", errorMsg);
