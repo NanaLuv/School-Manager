@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
   CheckIcon,
-  XMarkIcon,
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
 
@@ -45,7 +44,7 @@ const BulkClassAssignmentForm = ({
           (s) =>
             s.id === student.id &&
             s.assignments?.some(
-              (a) => a.academic_year_id == formData.academic_year_id
+              (a) => a.academic_year_id === formData.academic_year_id
             )
         );
         return !hasAssignment && student.is_active !== false;
@@ -144,7 +143,7 @@ const BulkClassAssignmentForm = ({
   };
 
   const getSelectedClassInfo = () => {
-    return classes.find((cls) => cls.id == formData.class_id);
+    return classes.find((cls) => cls.id === formData.class_id);
   };
 
   const classInfo = getSelectedClassInfo();

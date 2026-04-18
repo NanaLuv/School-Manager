@@ -4,7 +4,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../pages/contexts/AuthContext";
 import {
   MagnifyingGlassIcon,
-  BellIcon,
   QuestionMarkCircleIcon,
   SunIcon,
   MoonIcon,
@@ -13,7 +12,6 @@ import {
   ArrowRightOnRectangleIcon,
   Cog6ToothIcon,
   ShieldCheckIcon,
-  CalendarDaysIcon,
   ChartBarIcon,
 } from "@heroicons/react/24/outline";
 
@@ -23,32 +21,8 @@ const Topbar = () => {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
+  // const [showNotifications, setShowNotifications] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  // const [notifications, setNotifications] = useState([
-  //   {
-  //     id: 1,
-  //     title: "New student registered",
-  //     time: "10 min ago",
-  //     read: false,
-  //     type: "info",
-  //   },
-  //   {
-  //     id: 2,
-  //     title: "Payment received",
-  //     time: "1 hour ago",
-  //     read: false,
-  //     type: "success",
-  //   },
-  //   {
-  //     id: 3,
-  //     title: "Attendance due",
-  //     time: "2 hours ago",
-  //     read: true,
-  //     type: "warning",
-  //   },
-  // ]);
-
   // Get page title based on route
   const getPageTitle = () => {
     const path = location.pathname;

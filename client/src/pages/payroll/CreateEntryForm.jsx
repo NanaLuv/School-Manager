@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   CalculatorIcon,
   UserGroupIcon,
@@ -35,7 +34,6 @@ const CreateEntryForm = ({ periodId, onClose, onSuccess }) => {
   const [previousEntry, setPreviousEntry] = useState(null);
   const [loadingPrevious, setLoadingPrevious] = useState(false);
 
-
   useEffect(() => {
     fetchStaff();
   }, []);
@@ -43,7 +41,7 @@ const CreateEntryForm = ({ periodId, onClose, onSuccess }) => {
   const fetchStaff = async () => {
     try {
       const response = await api.get(
-        "/payroll/getstaff?is_active=true&limit=100"
+        "/payroll/getstaff?is_active=true&limit=100",
       );
       setStaffList(response.data?.staff || []);
     } catch (error) {
@@ -63,9 +61,7 @@ const CreateEntryForm = ({ periodId, onClose, onSuccess }) => {
   const fetchPreviousEntry = async (staffId) => {
     setLoadingPrevious(true);
     try {
-      const response = await api.get(
-        `/payroll/previous-entry/${staffId}`
-      );
+      const response = await api.get(`/payroll/previous-entry/${staffId}`);
 
       if (response.data.exists) {
         setPreviousEntry(response.data.entry);
@@ -115,61 +111,54 @@ const CreateEntryForm = ({ periodId, onClose, onSuccess }) => {
     }
   };
 
+  const handleCalculate = async () => {
+    setErrors({});
 
-const handleCalculate = async () => {
-  setErrors({});
+    // Validate required fields
+    if (!formData.staff_id) {
+      setErrors({ staff_id: "Please select a staff member" });
+      return;
+    }
 
-  // Validate required fields
-  if (!formData.staff_id) {
-    setErrors({ staff_id: "Please select a staff member" });
-    return;
-  }
+    // Make sure basic_salary is a number
+    const basicSalary = parseFloat(formData.basic_salary);
+    if (!basicSalary || basicSalary <= 0) {
+      setErrors({ basic_salary: "Basic salary must be greater than 0" });
+      return;
+    }
 
-  // Make sure basic_salary is a number
-  const basicSalary = parseFloat(formData.basic_salary);
-  if (!basicSalary || basicSalary <= 0) {
-    setErrors({ basic_salary: "Basic salary must be greater than 0" });
-    return;
-  }
+    setLoading(true);
+    try {
+      // Make sure all numbers are properly formatted
+      const payload = {
+        ...formData,
+        basic_salary: parseFloat(formData.basic_salary) || 0,
+        housing_allowance: parseFloat(formData.housing_allowance) || 0,
+        transport_allowance: parseFloat(formData.transport_allowance) || 0,
+        medical_allowance: parseFloat(formData.medical_allowance) || 0,
+        other_allowance: parseFloat(formData.other_allowance) || 0,
+        welfare_deduction: parseFloat(formData.welfare_deduction) || 0,
+        loan_deduction: parseFloat(formData.loan_deduction) || 0,
+        other_deduction: parseFloat(formData.other_deduction) || 0,
+      };
 
-  setLoading(true);
-  try {
+      const response = await api.post("/payroll/calculate", payload);
 
-    // Make sure all numbers are properly formatted
-    const payload = {
-      ...formData,
-      basic_salary: parseFloat(formData.basic_salary) || 0,
-      housing_allowance: parseFloat(formData.housing_allowance) || 0,
-      transport_allowance: parseFloat(formData.transport_allowance) || 0,
-      medical_allowance: parseFloat(formData.medical_allowance) || 0,
-      other_allowance: parseFloat(formData.other_allowance) || 0,
-      welfare_deduction: parseFloat(formData.welfare_deduction) || 0,
-      loan_deduction: parseFloat(formData.loan_deduction) || 0,
-      other_deduction: parseFloat(formData.other_deduction) || 0,
-    };
+      console.log("Calculation response:", response.data);
+      setCalculated(response.data.calculated);
+    } catch (error) {
+      console.error("Error calculating payroll:", error);
+      console.error("Error response:", error.response?.data);
 
-
-    const response = await api.post(
-      "/payroll/calculate",
-      payload
-    );
-
-    console.log("Calculation response:", response.data);
-    setCalculated(response.data.calculated);
-  } catch (error) {
-    console.error("Error calculating payroll:", error);
-    console.error("Error response:", error.response?.data);
-
-    setErrors({
-      calculation:
-        error.response?.data?.details ||
-        "Failed to calculate payroll. Please check the values.",
-    });
-  } finally {
-    setLoading(false);
-  }
-};
-
+      setErrors({
+        calculation:
+          error.response?.data?.details ||
+          "Failed to calculate payroll. Please check the values.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -187,10 +176,7 @@ const handleCalculate = async () => {
         ssnit_employer: calculated.ssnit_employer,
       };
 
-      await api.post(
-        "/payroll/save-entry",
-        payload
-      );
+      await api.post("/payroll/save-entry", payload);
       alert("Payroll entry created successfully!");
       onSuccess();
       onClose();
@@ -213,9 +199,9 @@ const handleCalculate = async () => {
     }));
   };
 
-  const getSelectedStaff = () => {
-    return staffList.find((staff) => staff.id == formData.staff_id);
-  };
+  // const getSelectedStaff = () => {
+  //   return staffList.find((staff) => staff.id == formData.staff_id);
+  // };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">

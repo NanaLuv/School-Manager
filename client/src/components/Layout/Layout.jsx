@@ -1,5 +1,4 @@
 // frontend/src/components/Layout.jsx
-import { Outlet } from "react-router-dom";
 import Sidebar from "../sidebar/sidebar";
 import { useAuth } from "../../pages/contexts/AuthContext";
 import Topbar from "../sidebar/Topbar";

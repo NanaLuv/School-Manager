@@ -12,7 +12,6 @@ import {
   PencilIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../components/axiosconfig/axiosConfig";
 
@@ -489,21 +488,23 @@ const StudentBillSelection = () => {
       : parseFloat(bill.amount);
   };
 
-  // Fetch overpayments
-  const fetchStudentOverpayments = async () => {
-    try {
-      const response = await api.get(
-        `/getstudentoverpayments/${studentId}?academic_year_id=${studentInfo?.academic_year_id}&term_id=${studentInfo?.term_id}`
-      );
-      setStudentOverpayments(
-        response.data.filter((op) => op.status === "Active")
-      );
-    } catch (error) {
-      console.error("Error fetching student overpayments:", error);
-    }
-  };
+  // // Fetch overpayments
+  // const fetchStudentOverpayments = async () => {
+  //   try {
+  //     const response = await api.get(
+  //       `/getstudentoverpayments/${studentId}?academic_year_id=${studentInfo?.academic_year_id}&term_id=${studentInfo?.term_id}`
+  //     );
+  //     setStudentOverpayments(
+  //       response.data.filter((op) => op.status === "Active")
+  //     );
+  //   } catch (error) {
+  //     console.error("Error fetching student overpayments:", error);
+  //   }
+  // };
 
   // Update calculateTotals to handle overpayments
+ 
+ 
   const calculateTotals = () => {
     const selectedBillObjects = studentBills
       .filter((bill) => selectedBills.includes(bill.id))
@@ -597,34 +598,7 @@ const StudentBillSelection = () => {
 
   const performSave = async () => {
     setSaving(true);
-    // try {
-    //   const selectedBillObjects = studentBills
-    //     .filter((bill) => selectedBills.includes(bill.id))
-    //     .map((bill) => ({
-    //       ...bill,
-    //       amount:
-    //         editedAmounts[bill.id] !== undefined
-    //           ? editedAmounts[bill.id]
-    //           : parseFloat(bill.amount),
-    //     }));
-
-    //   const totals = calculateTotals();
-
-    //   // Save the finalized term bill with updated amounts
-    //   const response = await api.post(
-    //     "/savestudenttermbill",
-    //     {
-    //       student_id: studentId,
-    //       academic_year_id: studentInfo.academic_year_id,
-    //       term_id: studentInfo.term_id,
-    //       total_amount: totals.totalAmount,
-    //       compulsory_amount: totals.compulsoryTotal,
-    //       optional_amount: totals.optionalTotal,
-    //       selected_bills: selectedBills,
-    //       edited_amounts: editedAmounts,
-    //       created_by: 1,
-    //     }
-    //   );
+    
     try {
       const totals = calculateTotals();
 

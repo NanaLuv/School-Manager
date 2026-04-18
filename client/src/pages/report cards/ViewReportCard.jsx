@@ -2,20 +2,16 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeftIcon,
-  PrinterIcon,
+  // PrinterIcon,
   PencilIcon,
   CheckIcon,
   XMarkIcon,
   AcademicCapIcon,
-  ChartBarIcon,
   UserIcon,
-  DocumentArrowDownIcon,
   CalendarIcon,
-  SparklesIcon,
   ArrowRightIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const ViewReportCard = () => {

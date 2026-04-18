@@ -3,17 +3,15 @@ import {
   ClockIcon,
   FunnelIcon,
   ArrowDownTrayIcon,
-  MagnifyingGlassIcon,
   CalendarIcon,
   UserCircleIcon,
   ComputerDesktopIcon,
-  ShieldCheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   XMarkIcon,
   ChartBarIcon,
 } from "@heroicons/react/24/outline";
-import Modal from "../../components/common/Modal";
+// import Modal from "../../components/common/Modal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import api from "../../components/axiosconfig/axiosConfig";
 import { format } from "date-fns";

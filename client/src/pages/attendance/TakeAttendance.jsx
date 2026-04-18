@@ -4,19 +4,14 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   XMarkIcon,
-  ClockIcon,
-  UserIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   DocumentArrowDownIcon,
   CalendarIcon,
   EyeIcon,
-  ChartBarIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -32,7 +27,7 @@ const TakeAttendance = () => {
   const [students, setStudents] = useState([]);
   const [classInfo, setClassInfo] = useState(null);
   const [attendanceDate, setAttendanceDate] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
 
   // Pagination states
@@ -42,7 +37,6 @@ const TakeAttendance = () => {
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [showFilters, setShowFilters] = useState(false);
 
   // History and export states
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -55,7 +49,7 @@ const TakeAttendance = () => {
   const queryParams = new URLSearchParams(location.search);
   const classId = queryParams.get("class_id");
 
-  const user = useAuth()
+  const user = useAuth();
 
   useEffect(() => {
     if (classId) {
@@ -75,14 +69,12 @@ const TakeAttendance = () => {
     setLoading(true);
     try {
       // Get class info
-      const classRes = await api.get(
-        `/getclasses/${classId}/students`
-      );
+      const classRes = await api.get(`/getclasses/${classId}/students`);
       setClassInfo(classRes.data);
 
       // Get students for attendance
       const attendanceRes = await api.get(
-        `/attendance/class/${classId}?date=${attendanceDate}`
+        `/attendance/class/${classId}?date=${attendanceDate}`,
       );
 
       setStudents(attendanceRes.data.students || attendanceRes.data);
@@ -113,7 +105,7 @@ const TakeAttendance = () => {
       const lastWeekDate = lastWeek.toISOString().split("T")[0];
 
       const response = await api.get(
-        `/attendance/records?class_id=${classId}&start_date=${lastWeekDate}&end_date=${attendanceDate}`
+        `/attendance/records?class_id=${classId}&start_date=${lastWeekDate}&end_date=${attendanceDate}`,
       );
 
       if (response.data && response.data.length > 0) {
@@ -135,7 +127,7 @@ const TakeAttendance = () => {
           uniqueDates.map((date) => ({
             date,
             records: groupedByDate[date],
-          }))
+          })),
         );
       }
     } catch (error) {
@@ -148,8 +140,8 @@ const TakeAttendance = () => {
       prev.map((student) =>
         student.id === studentId
           ? { ...student, attendance_status: status }
-          : student
-      )
+          : student,
+      ),
     );
   };
 
@@ -158,8 +150,8 @@ const TakeAttendance = () => {
       prev.map((student) =>
         student.id === studentId
           ? { ...student, attendance_notes: notes }
-          : student
-      )
+          : student,
+      ),
     );
   };
 
@@ -168,7 +160,7 @@ const TakeAttendance = () => {
       prev.map((student) => ({
         ...student,
         attendance_status: status,
-      }))
+      })),
     );
   };
 
@@ -201,7 +193,7 @@ const TakeAttendance = () => {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentStudents = filteredStudents.slice(
     indexOfFirstItem,
-    indexOfLastItem
+    indexOfLastItem,
   );
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
@@ -219,9 +211,7 @@ const TakeAttendance = () => {
       // Get current academic year
       let academic_year_id;
       try {
-        const yearsResponse = await api.get(
-          "/getacademicyears"
-        );
+        const yearsResponse = await api.get("/getacademicyears");
         const currentYear = yearsResponse.data.find((year) => year.is_current);
         if (currentYear) {
           academic_year_id = currentYear.id;
@@ -240,9 +230,7 @@ const TakeAttendance = () => {
       // Get current term
       let term_id = 1;
       try {
-        const termsResponse = await api.get(
-          "/getterms"
-        );
+        const termsResponse = await api.get("/getterms");
         const currentTerm = termsResponse.data.find((term) => {
           const today = new Date();
           const startDate = new Date(term.start_date);
@@ -265,24 +253,13 @@ const TakeAttendance = () => {
         notes: student.attendance_notes || "",
       }));
 
-      const response = await api.post(
-        "/attendance/bulk",
-        {
-          attendance_data,
-          academic_year_id,
-          term_id,
-          date: attendanceDate,
-          recorded_by,
-        }
-      );
-
       alert("Attendance saved successfully!");
       fetchPreviousAttendance(); // Refresh previous attendance
     } catch (error) {
       console.error("Error saving attendance:", error);
       alert(
         "Error saving attendance: " +
-          (error.response?.data?.error || error.message)
+          (error.response?.data?.error || error.message),
       );
     }
     setSaving(false);
@@ -383,7 +360,7 @@ const TakeAttendance = () => {
 
     XLSX.writeFile(
       wb,
-      `attendance-${classInfo?.class_name}-${attendanceDate}.xlsx`
+      `attendance-${classInfo?.class_name}-${attendanceDate}.xlsx`,
     );
   };
 
@@ -395,7 +372,7 @@ const TakeAttendance = () => {
       const response = await api.get(
         `/attendance/records?student_id=${
           student.id
-        }&start_date=${getOneMonthAgo()}&end_date=${attendanceDate}`
+        }&start_date=${getOneMonthAgo()}&end_date=${attendanceDate}`,
       );
       setStudentHistory(response.data || []);
       setShowHistoryModal(true);
@@ -493,7 +470,7 @@ const TakeAttendance = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {previousAttendance.map((day) => {
               const presentCount = day.records.filter(
-                (r) => r.status === "Present"
+                (r) => r.status === "Present",
               ).length;
               const attendanceRate = (
                 (presentCount / day.records.length) *
@@ -511,8 +488,8 @@ const TakeAttendance = () => {
                         attendanceRate >= 90
                           ? "bg-green-100 text-green-800"
                           : attendanceRate >= 75
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-red-100 text-red-800"
                       }`}
                     >
                       {attendanceRate}%
@@ -595,10 +572,10 @@ const TakeAttendance = () => {
               status === "Present"
                 ? "bg-green-500 hover:bg-green-600"
                 : status === "Absent"
-                ? "bg-red-500 hover:bg-red-600"
-                : status === "Late"
-                ? "bg-yellow-500 hover:bg-yellow-600"
-                : "bg-blue-500 hover:bg-blue-600"
+                  ? "bg-red-500 hover:bg-red-600"
+                  : status === "Late"
+                    ? "bg-yellow-500 hover:bg-yellow-600"
+                    : "bg-blue-500 hover:bg-blue-600"
             } text-white`}
           >
             Mark All {status}
@@ -656,7 +633,7 @@ const TakeAttendance = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full border ${getStatusColor(
-                        student.attendance_status
+                        student.attendance_status,
                       )}`}
                     >
                       {student.attendance_status}
@@ -703,16 +680,16 @@ const TakeAttendance = () => {
                                   (status === "Present"
                                     ? "bg-green-500"
                                     : status === "Absent"
-                                    ? "bg-red-500"
-                                    : status === "Late"
-                                    ? "bg-yellow-500"
-                                    : "bg-blue-500")
+                                      ? "bg-red-500"
+                                      : status === "Late"
+                                        ? "bg-yellow-500"
+                                        : "bg-blue-500")
                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                             }`}
                           >
                             {status.charAt(0)}
                           </button>
-                        )
+                        ),
                       )}
                     </div>
                   </td>
@@ -918,7 +895,7 @@ const TakeAttendance = () => {
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span
                               className={`px-2 py-1 text-xs rounded-full ${getStatusColor(
-                                record.status
+                                record.status,
                               )}`}
                             >
                               {record.status}

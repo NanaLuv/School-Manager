@@ -421,11 +421,11 @@ const GradeEntrySheet = ({
             <div>
               Subject:{" "}
               <strong>
-                {subjects.find((s) => s.id == selectedSubject)?.subject_name}
+                {subjects.find((s) => s.id === selectedSubject)?.subject_name}
               </strong>{" "}
               • Term:{" "}
               <strong>
-                {terms.find((t) => t.id == selectedTerm)?.term_name}
+                {terms.find((t) => t.id === selectedTerm)?.term_name}
               </strong>
             </div>
           </div>

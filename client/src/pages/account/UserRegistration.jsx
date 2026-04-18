@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  PlusIcon,
   UserPlusIcon,
   EyeIcon,
   EyeSlashIcon,
@@ -17,7 +16,6 @@ import {
 } from "@heroicons/react/24/outline";
 import Modal from "../../components/common/Modal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const UserRegistration = () => {
@@ -31,7 +29,6 @@ const UserRegistration = () => {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [activeTab, setActiveTab] = useState("all");
-  
 
   // Form state
   const [userForm, setUserForm] = useState({
@@ -61,9 +58,9 @@ const UserRegistration = () => {
   const [showConfirmDefaultPassword, setShowConfirmDefaultPassword] =
     useState(false);
 
-    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-    const [showNewPassword, setShowNewPassword] = useState(false);
-    const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -116,7 +113,7 @@ const UserRegistration = () => {
     active: users.filter((u) => u.is_active).length,
     admin: users.filter((u) => u.role_name === "admin").length,
     teacher: users.filter((u) => u.role_name === "teacher").length,
-    teacher: users.filter((u) => u.role_name === "accountant").length,
+    accountant: users.filter((u) => u.role_name === "accountant").length,
     inactive: users.filter((u) => !u.is_active).length,
   };
 
@@ -215,10 +212,7 @@ const UserRegistration = () => {
     try {
       if (editingUser) {
         // Update existing user
-        await api.put(
-          `/updateuser/${editingUser.id}`,
-          userForm
-        );
+        await api.put(`/updateuser/${editingUser.id}`, userForm);
         setIsModalOpen(false);
         fetchUsers();
         alert("User updated successfully");
@@ -895,7 +889,6 @@ const UserRegistration = () => {
                   )}
                 </button>
               </div>
-              
             </div>
 
             {/* New Password field */}

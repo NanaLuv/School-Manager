@@ -7,7 +7,7 @@ import {
   DocumentTextIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { generateBillPDF, generatePDFFromElement } from "../bill-preview/pdfService"
+import { generateBillPDF } from "../bill-preview/pdfService"
 
 const BillPreview = ({ preview, onClose, onGeneratePDF }) => {
   const [generatingPDF, setGeneratingPDF] = useState(false);

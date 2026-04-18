@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   CalculatorIcon,
-  UserGroupIcon,
   CurrencyDollarIcon,
   BanknotesIcon,
   InformationCircleIcon,
@@ -45,9 +43,7 @@ const EditEntryForm = ({ entryId, onClose, onSuccess }) => {
   const fetchEntryData = async () => {
     setLoading(true);
     try {
-      const response = await api.get(
-        `/payroll/entry/${entryId}`
-      );
+      const response = await api.get(`/payroll/entry/${entryId}`);
 
       const entry = response.data;
 
@@ -126,23 +122,20 @@ const EditEntryForm = ({ entryId, onClose, onSuccess }) => {
     }
 
     try {
-      const response = await api.post(
-        "/payroll/calculate",
-        {
-          staff_id: formData.staff_id,
-          period_id: formData.period_id,
-          basic_salary: formData.basic_salary,
-          housing_allowance: formData.housing_allowance,
-          transport_allowance: formData.transport_allowance,
-          medical_allowance: formData.medical_allowance,
-          other_allowance: formData.other_allowance,
-          allowance_description: formData.allowance_description,
-          welfare_deduction: formData.welfare_deduction,
-          loan_deduction: formData.loan_deduction,
-          other_deduction: formData.other_deduction,
-          deduction_description: formData.deduction_description,
-        }
-      );
+      const response = await api.post("/payroll/calculate", {
+        staff_id: formData.staff_id,
+        period_id: formData.period_id,
+        basic_salary: formData.basic_salary,
+        housing_allowance: formData.housing_allowance,
+        transport_allowance: formData.transport_allowance,
+        medical_allowance: formData.medical_allowance,
+        other_allowance: formData.other_allowance,
+        allowance_description: formData.allowance_description,
+        welfare_deduction: formData.welfare_deduction,
+        loan_deduction: formData.loan_deduction,
+        other_deduction: formData.other_deduction,
+        deduction_description: formData.deduction_description,
+      });
 
       const newCalculations = response.data.calculated;
       setCalculated(newCalculations);
@@ -167,10 +160,7 @@ const EditEntryForm = ({ entryId, onClose, onSuccess }) => {
     setSaving(true);
 
     try {
-      await api.put(
-        `/payroll/update-entry/${entryId}`,
-        formData
-      );
+      await api.put(`/payroll/update-entry/${entryId}`, formData);
 
       alert("Payroll entry updated successfully!");
       onSuccess();

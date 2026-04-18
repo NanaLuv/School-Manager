@@ -76,14 +76,14 @@ const ClassDetails = () => {
     setExporting(false);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "Not set";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  // const formatDate = (dateString) => {
+  //   if (!dateString) return "Not set";
+  //   return new Date(dateString).toLocaleDateString("en-US", {
+  //     year: "numeric",
+  //     month: "short",
+  //     day: "numeric",
+  //   });
+  // };
 
   const calculateAge = (dateOfBirth) => {
     if (!dateOfBirth) return "Unknown";

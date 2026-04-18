@@ -13,7 +13,6 @@ import AcademicYearForm from "../../components/academics/AcademicYearForm";
 import TermForm from "../../components/academics/TermForm";
 import AcademicYearTable from "../../components/academics/AcademicYearTable";
 import TermTable from "../../components/academics/TermTable";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const YearTermSettings = () => {
@@ -66,12 +65,9 @@ const YearTermSettings = () => {
         ...filters,
       };
 
-      const response = await api.get(
-        "/getacademicyearspaginated",
-        {
-          params,
-        }
-      );
+      const response = await api.get("/getacademicyearspaginated", {
+        params,
+      });
 
       setAcademicYears(response.data.years);
       setPagination(response.data.pagination);
@@ -132,9 +128,7 @@ const YearTermSettings = () => {
   const handleDeleteYear = async (yearId) => {
     if (window.confirm("Are you sure you want to delete this academic year?")) {
       try {
-        await api.delete(
-          `/deleteacademicyear/${yearId}`
-        );
+        await api.delete(`/deleteacademicyear/${yearId}`);
         getAcademicYearsData(); // Refresh data
       } catch (error) {
         console.error("Error deleting academic year:", error);
@@ -179,22 +173,13 @@ const YearTermSettings = () => {
     try {
       if (modalType === "year") {
         if (editingYear) {
-          await api.put(
-            `/updateacademicyear/${editingYear.id}`,
-            data
-          );
+          await api.put(`/updateacademicyear/${editingYear.id}`, data);
         } else {
-          await api.post(
-            "/createacademicyear",
-            data
-          );
+          await api.post("/createacademicyear", data);
         }
       } else {
         if (editingTerm) {
-          await api.put(
-            `/updateterm/${editingTerm.id}`,
-            data
-          );
+          await api.put(`/updateterm/${editingTerm.id}`, data);
         } else {
           await api.post("/createterm", data);
         }
@@ -437,7 +422,7 @@ const YearTermSettings = () => {
                             {pageNum}
                           </button>
                         );
-                      }
+                      },
                     )}
 
                     <button
@@ -483,8 +468,8 @@ const YearTermSettings = () => {
               ? "Edit Academic Year"
               : "Add New Academic Year"
             : editingTerm
-            ? "Edit Term"
-            : "Add New Term"
+              ? "Edit Term"
+              : "Add New Term"
         }
         size="medium"
       >

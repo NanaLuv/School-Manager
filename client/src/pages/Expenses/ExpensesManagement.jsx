@@ -8,14 +8,10 @@ import {
   ArrowDownTrayIcon,
   TrashIcon,
   PencilIcon,
-  EyeIcon,
   ReceiptRefundIcon,
   BanknotesIcon,
   UserIcon,
   TagIcon,
-  InformationCircleIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
 } from "@heroicons/react/24/outline";
 import api from "../../components/axiosconfig/axiosConfig";
 
@@ -35,7 +31,6 @@ const ExpensesManagement = () => {
     reference_number: "",
     voucher_number: "",
   });
-
 
   // UI state
   const [expenses, setExpenses] = useState([]);
@@ -154,12 +149,10 @@ const ExpensesManagement = () => {
     try {
       const recordedById = user.id || 1;
 
-
       const submitData = {
         ...formData,
         recorded_by: parseInt(recordedById),
       };
-
 
       if (
         !submitData.voucher_number ||

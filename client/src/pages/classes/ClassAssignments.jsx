@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  PlusIcon,
   UserPlusIcon,
   UserGroupIcon,
   BuildingLibraryIcon,
@@ -8,7 +7,6 @@ import {
   MagnifyingGlassIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  FunnelIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Modal from "../../components/common/Modal";
@@ -16,7 +14,6 @@ import LoadingSpinner from "../../components/common/LoadingSpinner";
 import ClassAssignmentForm from "../../components/classes/ClassAssignmentForm";
 import BulkClassAssignmentForm from "../../components/classes/BulkClassAssignmentForm";
 import ClassAssignmentTable from "../../components/classes/ClassAssignmentTable";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const ClassAssignments = () => {
@@ -29,7 +26,7 @@ const ClassAssignments = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState(null);
-  const [selectedYear, setSelectedYear] = useState("");
+  const [selectedYear] = useState("");
   const [enrollmentType, setEnrollmentType] = useState("single"); // 'single' or 'bulk'
 
   // Pagination state
@@ -249,7 +246,7 @@ const ClassAssignments = () => {
       const hasAssignment = assignments.some(
         (assignment) =>
           assignment.student_id === student.id &&
-          assignment.academic_year_id == selectedYear,
+          assignment.academic_year_id === selectedYear,
       );
       return !hasAssignment && student.is_active !== false;
     });
@@ -258,7 +255,7 @@ const ClassAssignments = () => {
   // Filter assignments by selected academic year
   const filteredAssignments = selectedYear
     ? assignments.filter(
-        (assignment) => assignment.academic_year_id == selectedYear,
+        (assignment) => assignment.academic_year_id === selectedYear,
       )
     : assignments;
 
@@ -341,7 +338,7 @@ const ClassAssignments = () => {
             {filters.class_id && (
               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-100 text-emerald-800">
                 Class:{" "}
-                {classes.find((c) => c.id == filters.class_id)?.class_name ||
+                {classes.find((c) => c.id === filters.class_id)?.class_name ||
                   "Selected"}
                 <button
                   onClick={() => handleFilterChange("class_id", "")}
@@ -354,7 +351,7 @@ const ClassAssignments = () => {
             {filters.academic_year_id && (
               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">
                 Year:{" "}
-                {academicYears.find((y) => y.id == filters.academic_year_id)
+                {academicYears.find((y) => y.id === filters.academic_year_id)
                   ?.year_label || "Selected"}
                 <button
                   onClick={() => handleFilterChange("academic_year_id", "")}

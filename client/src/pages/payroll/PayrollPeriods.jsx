@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -8,7 +7,6 @@ import {
   PencilIcon,
   TrashIcon,
   CalendarIcon,
-  PlusIcon,
   DocumentDuplicateIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
@@ -20,7 +18,6 @@ const PayrollPeriods = () => {
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false); // Add this state
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   useEffect(() => {
     fetchPeriods();

@@ -1,8 +1,6 @@
-
 import React, { useState, useEffect } from "react";
 import { DocumentChartBarIcon } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import { useAcademicData } from "../../hooks/useAcademicContext"; // Import the hook
 import api from "../../components/axiosconfig/axiosConfig";
 
@@ -59,9 +57,7 @@ const AttendanceReports = () => {
 
   const fetchClasses = async () => {
     try {
-      const classesRes = await api.get(
-        "/getclasses"
-      );
+      const classesRes = await api.get("/getclasses");
       setClasses(classesRes.data);
     } catch (error) {
       console.error("Error fetching classes:", error);
@@ -86,15 +82,13 @@ const AttendanceReports = () => {
         if (filters[key]) params.append(key, filters[key]);
       });
 
-      const response = await api.get(
-        `/attendance/reports?${params}`
-      );
+      const response = await api.get(`/attendance/reports?${params}`);
       setReportData(response.data);
     } catch (error) {
       console.error("Error generating report:", error);
       alert(
         "Error generating report: " +
-          (error.response?.data?.error || error.message)
+          (error.response?.data?.error || error.message),
       );
     }
     setLoading(false);
@@ -114,13 +108,10 @@ const AttendanceReports = () => {
       });
       params.append("format", format);
 
-      const response = await api.get(
-        `/attendance/export?${params}`,
-        {
-          responseType: "blob",
-          timeout: 30000, // 30 second timeout
-        }
-      );
+      const response = await api.get(`/attendance/export?${params}`, {
+        responseType: "blob",
+        timeout: 30000, // 30 second timeout
+      });
 
       // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -128,7 +119,7 @@ const AttendanceReports = () => {
       link.href = url;
 
       const className =
-        classes.find((c) => c.id == filters.class_id)?.class_name ||
+        classes.find((c) => c.id === filters.class_id)?.class_name ||
         "attendance";
       const extension = format === "excel" ? "xlsx" : "pdf";
 
@@ -142,7 +133,7 @@ const AttendanceReports = () => {
 
       link.setAttribute(
         "download",
-        `attendance-report-${className}-${yearLabel}-${termName}-${filters.report_type}.${extension}`
+        `attendance-report-${className}-${yearLabel}-${termName}-${filters.report_type}.${extension}`,
       );
       document.body.appendChild(link);
       link.click();
@@ -259,7 +250,7 @@ const AttendanceReports = () => {
                     {selectedYear.is_current && " • "}
                     📅{" "}
                     {new Date(
-                      selectedTermObj.start_date
+                      selectedTermObj.start_date,
                     ).toLocaleDateString()}{" "}
                     - {new Date(selectedTermObj.end_date).toLocaleDateString()}
                   </span>
@@ -597,9 +588,9 @@ const AttendanceReports = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBgColor(
-                              student.attendance_percentage
+                              student.attendance_percentage,
                             )} ${getStatusColor(
-                              student.attendance_percentage
+                              student.attendance_percentage,
                             )}`}
                           >
                             {student.attendance_percentage}%
@@ -678,7 +669,7 @@ const AttendanceReports = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <span
                               className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBgColor(
-                                day.attendance_rate
+                                day.attendance_rate,
                               )} ${getStatusColor(day.attendance_rate)}`}
                             >
                               {day.attendance_rate}%
@@ -704,8 +695,8 @@ const AttendanceReports = () => {
                         reportData.summary?.overall_trend === "Improving"
                           ? "text-green-600"
                           : reportData.summary?.overall_trend === "Declining"
-                          ? "text-red-600"
-                          : "text-yellow-600"
+                            ? "text-red-600"
+                            : "text-yellow-600"
                       }`}
                     >
                       {reportData.summary?.overall_trend || "N/A"}
@@ -787,11 +778,11 @@ const AttendanceReports = () => {
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {new Date(
-                                      week.week_start
+                                      week.week_start,
                                     ).toLocaleDateString()}{" "}
                                     -{" "}
                                     {new Date(
-                                      week.week_end
+                                      week.week_end,
                                     ).toLocaleDateString()}
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-green-600 font-semibold">
@@ -803,9 +794,9 @@ const AttendanceReports = () => {
                                   <td className="px-6 py-4 whitespace-nowrap text-center">
                                     <span
                                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBgColor(
-                                        week.attendance_rate
+                                        week.attendance_rate,
                                       )} ${getStatusColor(
-                                        week.attendance_rate
+                                        week.attendance_rate,
                                       )}`}
                                     >
                                       {week.attendance_rate}%
@@ -828,7 +819,7 @@ const AttendanceReports = () => {
                                   </td>
                                 </tr>
                               );
-                            }
+                            },
                           )}
                         </tbody>
                       </table>
@@ -887,14 +878,14 @@ const AttendanceReports = () => {
                                 <td className="px-6 py-4 whitespace-nowrap text-center">
                                   <span
                                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBgColor(
-                                      day.attendance_rate
+                                      day.attendance_rate,
                                     )} ${getStatusColor(day.attendance_rate)}`}
                                   >
                                     {day.attendance_rate}%
                                   </span>
                                 </td>
                               </tr>
-                            )
+                            ),
                           )}
                         </tbody>
                       </table>
@@ -956,9 +947,9 @@ const AttendanceReports = () => {
                                 <td className="px-6 py-4 whitespace-nowrap text-center">
                                   <span
                                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBgColor(
-                                      student.avg_attendance
+                                      student.avg_attendance,
                                     )} ${getStatusColor(
-                                      student.avg_attendance
+                                      student.avg_attendance,
                                     )}`}
                                   >
                                     {student.avg_attendance.toFixed(1)}%
@@ -981,16 +972,16 @@ const AttendanceReports = () => {
                                       student.trend_direction === "Improving"
                                         ? "bg-green-100 text-green-800"
                                         : student.trend_direction ===
-                                          "Declining"
-                                        ? "bg-red-100 text-red-800"
-                                        : "bg-yellow-100 text-yellow-800"
+                                            "Declining"
+                                          ? "bg-red-100 text-red-800"
+                                          : "bg-yellow-100 text-yellow-800"
                                     }`}
                                   >
                                     {student.trend_direction}
                                   </span>
                                 </td>
                               </tr>
-                            )
+                            ),
                           )}
                         </tbody>
                       </table>
@@ -1009,7 +1000,7 @@ const AttendanceReports = () => {
                     Monthly Summary -{" "}
                     {new Date(2000, filters.month - 1).toLocaleString(
                       "default",
-                      { month: "long" }
+                      { month: "long" },
                     )}{" "}
                     {filters.year}
                   </h3>

@@ -18,14 +18,9 @@ import {
   CheckIcon,
   TrashIcon,
   ExclamationTriangleIcon,
-  ChevronUpIcon,
-  ChevronLeftIcon,
-  ChevronDoubleLeftIcon,
   ChevronRightIcon as ChevronRight,
-  ChevronDoubleRightIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import BillPreview from "../../components/bill-preview/BillPreview";
 import { useAcademicData } from "../../hooks/useAcademicContext";
@@ -164,9 +159,7 @@ const StudentBills = () => {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const classesRes = await api.get(
-        "/getclasses"
-      );
+      const classesRes = await api.get("/getclasses");
       setClasses(classesRes.data);
 
       if (!filters.class_id && classesRes.data.length > 0) {
@@ -196,9 +189,7 @@ const StudentBills = () => {
           active_only: "true",
         });
 
-        const response = await api.get(
-          `/getstudentbills?${params}`
-        );
+        const response = await api.get(`/getstudentbills?${params}`);
 
         // Handle both old and new response formats
         const billsData = response.data.bills || response.data;
@@ -220,7 +211,7 @@ const StudentBills = () => {
           fetchStudentTermBills(groupedData).then(
             (studentDataWithTermBills) => {
               setStudentsWithBills(studentDataWithTermBills);
-            }
+            },
           ),
         ]);
 
@@ -232,7 +223,7 @@ const StudentBills = () => {
         setLoading(false);
       }
     },
-    [filters, pagination.limit, pagination.page]
+    [filters, pagination.limit, pagination.page],
   );
 
   // Group bills by student
@@ -284,13 +275,11 @@ const StudentBills = () => {
 
     try {
       const arrearsPromises = studentIds.map((studentId) =>
-        api.get(`/getstudentarrears/${studentId}`)
+        api.get(`/getstudentarrears/${studentId}`),
       );
 
       const overpaymentsPromises = studentIds.map((studentId) =>
-        api.get(
-          `/getstudentoverpayments/${studentId}`
-        )
+        api.get(`/getstudentoverpayments/${studentId}`),
       );
 
       const [arrearsResults, overpaymentsResults] = await Promise.all([
@@ -304,7 +293,7 @@ const StudentBills = () => {
       studentIds.forEach((studentId, index) => {
         arrearsMap[studentId] = arrearsResults[index].data;
         overpaymentsMap[studentId] = overpaymentsResults[index].data.filter(
-          (op) => op.status === "Active"
+          (op) => op.status === "Active",
         );
       });
 
@@ -327,7 +316,7 @@ const StudentBills = () => {
       const termBillPromises = studentIds.map(async (studentId) => {
         try {
           const response = await api.get(
-            `/getstudenttermbill/${studentId}?academic_year_id=${filters.academic_year_id}&term_id=${filters.term_id}`
+            `/getstudenttermbill/${studentId}?academic_year_id=${filters.academic_year_id}&term_id=${filters.term_id}`,
           );
 
           const termBillData = response.data;
@@ -338,7 +327,7 @@ const StudentBills = () => {
           ) {
             try {
               termBillData.selected_bills = JSON.parse(
-                termBillData.selected_bills
+                termBillData.selected_bills,
               );
             } catch (parseError) {
               console.error("Error parsing selected_bills:", parseError);
@@ -425,7 +414,7 @@ const StudentBills = () => {
       (student) =>
         student.student.name.toLowerCase().includes(query) ||
         student.student.admission_number.toLowerCase().includes(query) ||
-        student.student.class_name.toLowerCase().includes(query)
+        student.student.class_name.toLowerCase().includes(query),
     );
   }, [studentsWithBills, debouncedSearchQuery]);
 
@@ -438,14 +427,14 @@ const StudentBills = () => {
         const currentArrearsTotal = studentArrears[studentId]
           ? studentArrears[studentId].reduce(
               (sum, arrear) => sum + (parseFloat(arrear.amount) || 0),
-              0
+              0,
             )
           : 0;
 
         const currentOverpaymentsTotal = studentOverpayments[studentId]
           ? studentOverpayments[studentId].reduce(
               (sum, overpayment) => sum + (parseFloat(overpayment.amount) || 0),
-              0
+              0,
             )
           : 0;
 
@@ -493,7 +482,7 @@ const StudentBills = () => {
         const currentTermTotal = compulsoryTotal;
         const netTotal = Math.max(
           currentTermTotal + currentArrearsTotal - currentOverpaymentsTotal,
-          0
+          0,
         );
 
         return {
@@ -524,7 +513,7 @@ const StudentBills = () => {
         };
       }
     },
-    [studentArrears, studentOverpayments]
+    [studentArrears, studentOverpayments],
   );
 
   // Pagination handlers
@@ -538,13 +527,13 @@ const StudentBills = () => {
       // Clear expanded students when changing page
       setExpandedStudents({});
     },
-    [pagination.totalPages, fetchBills]
+    [pagination.totalPages, fetchBills],
   );
 
-  const goToFirstPage = () => handlePageChange(1);
-  const goToPrevPage = () => handlePageChange(pagination.page - 1);
-  const goToNextPage = () => handlePageChange(pagination.page + 1);
-  const goToLastPage = () => handlePageChange(pagination.totalPages);
+  // const goToFirstPage = () => handlePageChange(1);
+  // const goToPrevPage = () => handlePageChange(pagination.page - 1);
+  // const goToNextPage = () => handlePageChange(pagination.page + 1);
+  // const goToLastPage = () => handlePageChange(pagination.totalPages);
 
   // Show message function
   const showMessage = useCallback((message, isError = false) => {
@@ -557,30 +546,11 @@ const StudentBills = () => {
     }
   }, []);
 
-  // Toggle delete section
-  const toggleDeleteSection = () => {
-    if (showDeleteSection) {
-      setShowDeleteSection(false);
-      if (autoHideTimer) {
-        clearTimeout(autoHideTimer);
-      }
-    } else {
-      setShowDeleteSection(true);
-
-      // Set timer to auto-hide after 30 seconds
-      const timer = setTimeout(() => {
-        setShowDeleteSection(false);
-      }, 30000);
-
-      setAutoHideTimer(timer);
-    }
-  };
-
   // Delete all arrears
   const handleDeleteAllArrears = async () => {
     if (
       !window.confirm(
-        "Are you sure you want to delete ALL student arrears records? This action cannot be undone!"
+        "Are you sure you want to delete ALL student arrears records? This action cannot be undone!",
       )
     ) {
       return;
@@ -588,13 +558,11 @@ const StudentBills = () => {
 
     setDeletingArrears(true);
     try {
-      const response = await api.delete(
-        "/student-arrears"
-      );
+      const response = await api.delete("/student-arrears");
 
       if (response.data.success) {
         showMessage(
-          `✅ Successfully deleted ${response.data.deletedCount} arrears records`
+          `✅ Successfully deleted ${response.data.deletedCount} arrears records`,
         );
         setArrearsDeleted(true);
 
@@ -615,7 +583,7 @@ const StudentBills = () => {
       console.error("Error deleting arrears:", error);
       showMessage(
         error.response?.data?.error || "Error deleting arrears",
-        true
+        true,
       );
     } finally {
       setDeletingArrears(false);
@@ -626,7 +594,7 @@ const StudentBills = () => {
   const handleDeleteAllOverpayments = async () => {
     if (
       !window.confirm(
-        "Are you sure you want to delete ALL student overpayments records? This action cannot be undone!"
+        "Are you sure you want to delete ALL student overpayments records? This action cannot be undone!",
       )
     ) {
       return;
@@ -634,13 +602,11 @@ const StudentBills = () => {
 
     setDeletingOverpayments(true);
     try {
-      const response = await api.delete(
-        "/student-overpayments"
-      );
+      const response = await api.delete("/student-overpayments");
 
       if (response.data.success) {
         showMessage(
-          `✅ Successfully deleted ${response.data.deletedCount} overpayment records`
+          `✅ Successfully deleted ${response.data.deletedCount} overpayment records`,
         );
         setOverpaymentsDeleted(true);
 
@@ -657,14 +623,14 @@ const StudentBills = () => {
       } else {
         showMessage(
           response.data.error || "Failed to delete overpayments",
-          true
+          true,
         );
       }
     } catch (error) {
       console.error("Error deleting overpayments:", error);
       showMessage(
         error.response?.data?.error || "Error deleting overpayments",
-        true
+        true,
       );
     } finally {
       setDeletingOverpayments(false);
@@ -690,10 +656,10 @@ const StudentBills = () => {
       const hasFinalizedBill = !!studentData.finalizedBill;
 
       const compulsoryBills = studentData.bills.filter(
-        (bill) => bill.is_compulsory
+        (bill) => bill.is_compulsory,
       );
       const optionalBills = studentData.bills.filter(
-        (bill) => !bill.is_compulsory
+        (bill) => !bill.is_compulsory,
       );
 
       const displayOptionalBills = hasFinalizedBill
@@ -711,7 +677,7 @@ const StudentBills = () => {
         finalizedBill: studentData.finalizedBill,
       };
     },
-    [calculateStudentTotals, studentArrears, studentOverpayments]
+    [calculateStudentTotals, studentArrears, studentOverpayments],
   );
 
   // Handle preview bill
@@ -720,7 +686,7 @@ const StudentBills = () => {
       const preview = generateBillPreview(studentData);
       setPreviewBill(preview);
     },
-    [generateBillPreview]
+    [generateBillPreview],
   );
 
   // Close preview
@@ -741,10 +707,10 @@ const StudentBills = () => {
       const { class_id, academic_year_id, term_id } = filters;
 
       const response = await api.get(
-       `/class-bills-pdf/${class_id}/${academic_year_id}/${term_id}`,
+        `/class-bills-pdf/${class_id}/${academic_year_id}/${term_id}`,
         {
           responseType: "blob",
-        }
+        },
       );
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -755,7 +721,7 @@ const StudentBills = () => {
         classes.find((c) => c.id === parseInt(class_id))?.class_name || "class";
       link.setAttribute(
         "download",
-        `${className}-all-bills-${academic_year_id}-${term_id}.pdf`
+        `${className}-all-bills-${academic_year_id}-${term_id}.pdf`,
       );
 
       document.body.appendChild(link);
@@ -779,7 +745,7 @@ const StudentBills = () => {
 
     try {
       const checkResponse = await api.get(
-        `/students-with-previous-balances?academic_year_id=${filters.academic_year_id}&term_id=${filters.term_id}&class_id=${filters.class_id}`
+        `/students-with-previous-balances?academic_year_id=${filters.academic_year_id}&term_id=${filters.term_id}&class_id=${filters.class_id}`,
       );
 
       let confirmationMessage = `Generate bills for all students in this class for the selected term?`;
@@ -789,7 +755,7 @@ const StudentBills = () => {
           .slice(0, 5)
           .map(
             (s) =>
-              `  • ${s.first_name} ${s.last_name}: Ghc ${s.outstanding_balance}`
+              `  • ${s.first_name} ${s.last_name}: Ghc ${s.outstanding_balance}`,
           )
           .join("\n");
 
@@ -808,32 +774,29 @@ const StudentBills = () => {
 
       setGeneratingBills(true);
 
-      const response = await api.post(
-        "/generatebillsfromtemplates",
-        {
-          class_id: filters.class_id,
-          academic_year_id: filters.academic_year_id,
-          term_id: filters.term_id,
-          created_by: 1,
-        }
-      );
+      const response = await api.post("/generatebillsfromtemplates", {
+        class_id: filters.class_id,
+        academic_year_id: filters.academic_year_id,
+        term_id: filters.term_id,
+        created_by: 1,
+      });
 
       if (response.data.details?.carriedBalanceList?.length > 0) {
         const successDetails = response.data.details.carriedBalanceList
           .map(
             (b) =>
               `• ${b.student_name}: Ghc ${b.previous_balance.toFixed(
-                2
-              )} (from ${b.previous_period})`
+                2,
+              )} (from ${b.previous_period})`,
           )
           .join("\n");
 
         alert(
-          `✅ Successfully generated ${response.data.generated} bills\n\nPrevious balances carried forward:\n${successDetails}`
+          `✅ Successfully generated ${response.data.generated} bills\n\nPrevious balances carried forward:\n${successDetails}`,
         );
       } else {
         alert(
-          `✅ Successfully generated ${response.data.generated} student bills`
+          `✅ Successfully generated ${response.data.generated} student bills`,
         );
       }
 
@@ -1049,7 +1012,7 @@ const StudentBills = () => {
                     (30000 -
                       (Date.now() -
                         (autoHideTimer?._idleStart || Date.now()))) /
-                      1000
+                      1000,
                   )}
                   s
                 </span>
@@ -1088,8 +1051,8 @@ const StudentBills = () => {
                     {deletingArrears
                       ? "Deleting..."
                       : arrearsDeleted
-                      ? "Arrears Deleted"
-                      : "Delete All Arrears"}
+                        ? "Arrears Deleted"
+                        : "Delete All Arrears"}
                   </div>
                   <div className="text-xs opacity-80">
                     Clears all outstanding balances
@@ -1108,8 +1071,8 @@ const StudentBills = () => {
                     {deletingOverpayments
                       ? "Deleting..."
                       : overpaymentsDeleted
-                      ? "Overpayments Deleted"
-                      : "Delete All Overpayments"}
+                        ? "Overpayments Deleted"
+                        : "Delete All Overpayments"}
                   </div>
                   <div className="text-xs opacity-80">
                     Clears all credit balances
@@ -1152,7 +1115,7 @@ const StudentBills = () => {
               {Math.ceil(
                 (30000 -
                   (Date.now() - (autoHideTimer?._idleStart || Date.now()))) /
-                  1000
+                  1000,
               )}{" "}
               seconds
             </div>
@@ -1423,7 +1386,7 @@ const StudentCard = React.memo(
         )}
       </div>
     );
-  }
+  },
 );
 
 // Extracted Student Card Header
@@ -1481,7 +1444,7 @@ const StudentCardHeader = React.memo(
             {getStatusIcon(studentData.status)}
             <span
               className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                studentData.status
+                studentData.status,
               )}`}
             >
               {studentData.status}
@@ -1537,7 +1500,7 @@ const StudentCardHeader = React.memo(
         </div>
       </div>
     );
-  }
+  },
 );
 
 // Extracted Student Card Balance
@@ -1556,16 +1519,16 @@ const StudentCardBalance = React.memo(({ finalizedBill }) => {
           finalizedBill.remaining_balance > 0
             ? "text-red-600"
             : isCredit
-            ? "text-green-600"
-            : "text-gray-600"
+              ? "text-green-600"
+              : "text-gray-600"
         }`}
       >
         Balance: Ghc {balance.toFixed(2)}
         {finalizedBill.remaining_balance > 0
           ? " Due"
           : isCredit
-          ? " Credit"
-          : " Paid"}
+            ? " Credit"
+            : " Paid"}
       </div>
     </>
   );
@@ -1603,7 +1566,7 @@ const StudentCardDetails = React.memo(
         />
       </div>
     );
-  }
+  },
 );
 
 // Extracted Fee Breakdown
@@ -1621,14 +1584,14 @@ const FeeBreakdown = React.memo(
     const currentArrearsTotal = studentArrears[studentId]
       ? studentArrears[studentId].reduce(
           (sum, arrear) => sum + (parseFloat(arrear.amount) || 0),
-          0
+          0,
         )
       : 0;
 
     const currentOverpaymentsTotal = studentOverpayments[studentId]
       ? studentOverpayments[studentId].reduce(
           (sum, overpayment) => sum + (parseFloat(overpayment.amount) || 0),
-          0
+          0,
         )
       : 0;
 
@@ -1681,7 +1644,7 @@ const FeeBreakdown = React.memo(
         )}
       </div>
     );
-  }
+  },
 );
 
 // Extracted Finalized Bill Info
@@ -1856,7 +1819,7 @@ const StudentCardActions = React.memo(
         </div>
       </div>
     );
-  }
+  },
 );
 
 // Extracted Finalized Bill Status
@@ -1867,7 +1830,7 @@ const FinalizedBillStatus = React.memo(({ finalizedBill }) => (
     <span className="text-xs text-gray-500">
       • Updated:{" "}
       {new Date(
-        finalizedBill.updated_at || finalizedBill.created_at
+        finalizedBill.updated_at || finalizedBill.created_at,
       ).toLocaleDateString()}
     </span>
   </div>
@@ -1913,7 +1876,7 @@ const EmptyState = React.memo(
         )
       )}
     </div>
-  )
+  ),
 );
 
 export default StudentBills;

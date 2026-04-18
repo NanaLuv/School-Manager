@@ -279,11 +279,15 @@ const StudentsList = () => {
   const handleSaveStudent = async (studentData) => {
     try {
       if (editingStudent) {
-        const response = await api.put(`/updatestudent/${editingStudent.id}`, studentData, {
-          headers: {
-            "Content-Type": "multipart/form-data",
+        const response = await api.put(
+          `/updatestudent/${editingStudent.id}`,
+          studentData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
           },
-        });
+        );
         console.log("Update response:", response.data);
         alert(response.data.message || "Student updated successfully!");
       } else {

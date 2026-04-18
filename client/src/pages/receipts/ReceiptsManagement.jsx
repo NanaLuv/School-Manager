@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
   DocumentTextIcon,
-  MagnifyingGlassIcon,
   EyeIcon,
   DocumentArrowDownIcon,
   CalendarIcon,
@@ -11,7 +10,6 @@ import {
   CreditCardIcon,
   AcademicCapIcon,
 } from "@heroicons/react/24/outline";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const ReceiptsManagement = () => {
@@ -39,9 +37,7 @@ const ReceiptsManagement = () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ ...filters, page });
-      const response = await api.get(
-        `/getallreceipts?${params}`
-      );
+      const response = await api.get(`/getallreceipts?${params}`);
       setReceipts(response.data.receipts);
       setPagination(response.data.pagination);
     } catch (error) {
@@ -56,9 +52,7 @@ const ReceiptsManagement = () => {
 
     setLoadingAllocations(true);
     try {
-      const response = await api.get(
-        `/getpaymentallocations/${paymentId}`
-      );
+      const response = await api.get(`/getpaymentallocations/${paymentId}`);
       setAllocationDetails((prev) => ({
         ...prev,
         [paymentId]: response.data,
@@ -81,10 +75,9 @@ const ReceiptsManagement = () => {
 
   const downloadReceipt = async (receiptNumber) => {
     try {
-      const response = await api.get(
-        `/receipts/${receiptNumber}`,
-        { responseType: "blob" }
-      );
+      const response = await api.get(`/receipts/${receiptNumber}`, {
+        responseType: "blob",
+      });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement("a");
@@ -139,7 +132,7 @@ const ReceiptsManagement = () => {
       allocationDetails[selectedReceipt.payment_id] || [];
     const totalAllocated = currentAllocations.reduce(
       (sum, alloc) => sum + parseFloat(alloc.amount_allocated || 0),
-      0
+      0,
     );
 
     return (
@@ -390,7 +383,7 @@ const ReceiptsManagement = () => {
 
                   {/* Allocation vs Payment Comparison */}
                   {Math.abs(
-                    totalAllocated - parseFloat(selectedReceipt.amount_paid)
+                    totalAllocated - parseFloat(selectedReceipt.amount_paid),
                   ) > 0.01 && (
                     <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                       <div className="flex justify-between text-sm text-yellow-800">
@@ -398,7 +391,7 @@ const ReceiptsManagement = () => {
                         <span className="font-semibold">
                           {formatCurrency(
                             parseFloat(selectedReceipt.amount_paid) -
-                              totalAllocated
+                              totalAllocated,
                           )}
                         </span>
                       </div>
@@ -687,7 +680,7 @@ const ReceiptsManagement = () => {
                 >
                   {page}
                 </button>
-              )
+              ),
             )}
           </div>
         </div>

@@ -8,9 +8,7 @@ import {
   ArrowPathIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CalendarIcon,
   DocumentTextIcon,
-  MagnifyingGlassIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import api from "../../components/axiosconfig/axiosConfig";

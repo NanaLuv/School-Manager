@@ -4,7 +4,6 @@ import Modal from "../../components/common/Modal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import SubjectAssignmentForm from "../../components/subjects/SubjectAssignmentForm";
 import SubjectAssignmentTable from "../../components/subjects/SubjectAssignmentTable";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const SubjectAssignments = () => {

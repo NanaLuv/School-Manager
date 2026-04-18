@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   UserPlusIcon,
   PencilIcon,
   TrashIcon,
-  EnvelopeIcon,
   PhoneIcon,
   BanknotesIcon,
   DocumentArrowUpIcon,
@@ -34,16 +32,13 @@ const StaffList = () => {
   const fetchStaff = async () => {
     setLoading(true);
     try {
-      const response = await api.get(
-        "/payroll/getstaff",
-        {
-          params: {
-            page: currentPage,
-            limit: 10,
-            search: searchTerm,
-          },
-        }
-      );
+      const response = await api.get("/payroll/getstaff", {
+        params: {
+          page: currentPage,
+          limit: 10,
+          search: searchTerm,
+        },
+      });
 
       setStaff(response.data.staff || []);
       setTotalPages(response.data.pagination?.totalPages || 1);
@@ -56,9 +51,7 @@ const StaffList = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await api.get(
-        "/payroll/categories"
-      );
+      const response = await api.get("/payroll/categories");
       setCategories(response.data || []);
     } catch (error) {
       console.error("Error fetching categories:", error);
@@ -144,12 +137,9 @@ const StaffList = () => {
 
       try {
         // Send bulk data to backend
-        const response = await api.post(
-          "/payroll/bulk-import",
-          {
-            staff: staffData,
-          }
-        );
+        const response = await api.post("/payroll/bulk-import", {
+          staff: staffData,
+        });
 
         alert(`Successfully imported ${response.data.imported} staff members`);
         setIsBulkImportModalOpen(false);
@@ -164,7 +154,7 @@ const StaffList = () => {
 
   const getCategoryIdByName = (categoryName) => {
     const category = categories.find(
-      (cat) => cat.category_name.toLowerCase() === categoryName?.toLowerCase()
+      (cat) => cat.category_name.toLowerCase() === categoryName?.toLowerCase(),
     );
     return category ? category.id : 1; // Default to first category if not found
   };
@@ -177,9 +167,7 @@ const StaffList = () => {
   const handleDeleteStaff = async (staffId) => {
     if (window.confirm("Are you sure you want to delete this staff member?")) {
       try {
-        await api.delete(
-          `/payroll/staff/${staffId}`
-        );
+        await api.delete(`/payroll/staff/${staffId}`);
         fetchStaff();
       } catch (error) {
         console.error("Error deleting staff:", error);
@@ -191,15 +179,9 @@ const StaffList = () => {
   const handleSaveStaff = async (staffData) => {
     try {
       if (editingStaff) {
-        await api.put(
-          `/payroll/staff/${editingStaff.id}`,
-          staffData
-        );
+        await api.put(`/payroll/staff/${editingStaff.id}`, staffData);
       } else {
-        await api.post(
-          "/payroll/addstaff",
-          staffData
-        );
+        await api.post("/payroll/addstaff", staffData);
       }
       setIsAddModalOpen(false);
       fetchStaff();
@@ -227,7 +209,7 @@ const StaffList = () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Staff");
     XLSX.writeFile(
       workbook,
-      `staff_export_${new Date().toISOString().split("T")[0]}.xlsx`
+      `staff_export_${new Date().toISOString().split("T")[0]}.xlsx`,
     );
   };
 
@@ -468,7 +450,7 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
       mobile_money_provider: "MTN",
       emergency_contact: "",
       emergency_phone: "",
-    }
+    },
   );
 
   const handleSubmit = (e) => {

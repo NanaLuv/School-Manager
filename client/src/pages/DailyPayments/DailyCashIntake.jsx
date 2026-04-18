@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   CurrencyDollarIcon,
   PlusIcon,
   CalendarIcon,
   BanknotesIcon,
-  DocumentTextIcon,
   ChartBarIcon,
   TableCellsIcon,
   ArrowDownTrayIcon,
@@ -70,7 +68,7 @@ const DailyCashIntake = () => {
       // Calculate today's total
       const total = (receiptsRes.data.receipts || []).reduce(
         (sum, receipt) => sum + parseFloat(receipt.amount),
-        0
+        0,
       );
       setTodayTotal(total);
     } catch (error) {
@@ -82,18 +80,15 @@ const DailyCashIntake = () => {
   const fetchWithFilters = async () => {
     try {
       setLoading(true);
-      const response = await api.get(
-        "/cash-receipts",
-        {
-          params: { ...filters, limit: 50 },
-        }
-      );
+      const response = await api.get("/cash-receipts", {
+        params: { ...filters, limit: 50 },
+      });
 
       setRecentReceipts(response.data.receipts || []);
 
       const total = (response.data.receipts || []).reduce(
         (sum, receipt) => sum + parseFloat(receipt.amount),
-        0
+        0,
       );
       setTodayTotal(total);
     } catch (error) {
@@ -105,9 +100,7 @@ const DailyCashIntake = () => {
 
   const fetchFeeCategories = async () => {
     try {
-      const response = await api.get(
-        "/getfeecategories"
-      );
+      const response = await api.get("/getfeecategories");
       setFeeCategories(response.data);
     } catch (error) {
       console.error("Error loading categories:", error);
@@ -199,14 +192,10 @@ const DailyCashIntake = () => {
         format: exportOptions.format,
       });
 
-
-      const response = await api.get(
-        `/cash-receipts/export?${params}`,
-        {
-          responseType: "blob",
-          timeout: 60000,
-        }
-      );
+      const response = await api.get(`/cash-receipts/export?${params}`, {
+        responseType: "blob",
+        timeout: 60000,
+      });
 
       // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -229,14 +218,14 @@ const DailyCashIntake = () => {
       console.error("Error exporting:", error);
       if (error.response?.status === 404) {
         alert(
-          "Export route not found. Please check if the route is registered on the server."
+          "Export route not found. Please check if the route is registered on the server.",
         );
       } else if (error.code === "ECONNABORTED") {
         alert("Export timed out. Try with smaller date range or Excel format.");
       } else {
         alert(
           "Error exporting data: " +
-            (error.response?.data?.error || error.message)
+            (error.response?.data?.error || error.message),
         );
       }
     }

@@ -4,7 +4,6 @@ import Modal from "../../components/common/Modal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import SubjectForm from "../../components/subjects/subjectform";
 import SubjectTable from "../../components/subjects/subjectTable";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const SubjectList = () => {

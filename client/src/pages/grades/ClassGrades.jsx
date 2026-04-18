@@ -8,19 +8,18 @@ import {
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import GradeEntrySheet from "../../components/grades/GradeEntrySheet";
 import GradeImport from "../../components/grades/GradeImport";
-import axios from "axios";
 import { useAcademicData } from "../../hooks/useAcademicContext";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const ClassGrades = () => {
   const { classId } = useParams();
   const location = useLocation();
-  
+
   const [loading, setLoading] = useState(true);
   const [students, setStudents] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [classData, setClassData] = useState(null);
-  
+
   // Use academic data hook
   const {
     selectedAcademicYear,
@@ -32,7 +31,7 @@ const ClassGrades = () => {
     getSelectedAcademicYear,
     getSelectedTerm,
     handleAcademicYearChange,
-    handleTermChange
+    handleTermChange,
   } = useAcademicData();
 
   // Initialize from location state if available
@@ -55,13 +54,11 @@ const ClassGrades = () => {
 
   const fetchClassInfo = async () => {
     try {
-      const studentsResponse = await api.get(
-        `/getclasses/${classId}/students`
-      );
+      const studentsResponse = await api.get(`/getclasses/${classId}/students`);
       setStudents(studentsResponse.data.students || []);
-      setClassData(prev => ({
+      setClassData((prev) => ({
         ...prev,
-        ...studentsResponse.data
+        ...studentsResponse.data,
       }));
     } catch (error) {
       console.error("Error fetching class info:", error);
@@ -70,26 +67,24 @@ const ClassGrades = () => {
 
   const fetchData = async () => {
     if (!selectedAcademicYear || !classId) return;
-    
+
     setLoading(true);
     try {
       // Get students in this class (for current academic year)
-      const studentsResponse = await api.get(
-        `/getclasses/${classId}/students`
-      );
+      const studentsResponse = await api.get(`/getclasses/${classId}/students`);
 
       // Get subjects assigned to this class for the selected academic year
       const subjectsResponse = await api.get(
-        `/getclasssubjects/${classId}/${selectedAcademicYear}`
+        `/getclasssubjects/${classId}/${selectedAcademicYear}`,
       );
 
       setStudents(studentsResponse.data.students || []);
       setSubjects(subjectsResponse.data);
-      
+
       // Update class data with the response
-      setClassData(prev => ({
+      setClassData((prev) => ({
         ...prev,
-        ...studentsResponse.data
+        ...studentsResponse.data,
       }));
     } catch (error) {
       console.error("Error fetching class data:", error);
@@ -139,7 +134,7 @@ const ClassGrades = () => {
               Manage scores for students in this class
             </p>
           </div>
-          
+
           {/* Academic Year and Term Selectors */}
           <div className="flex items-center space-x-3">
             <div>
@@ -190,13 +185,12 @@ const ClassGrades = () => {
                 <p className="text-blue-700">
                   <strong>Selected:</strong> {getAcademicYearLabel()}
                   {selectedTerm && (
-                    <span className="ml-2">
-                      • Term {getTermLabel()}
-                    </span>
+                    <span className="ml-2">• Term {getTermLabel()}</span>
                   )}
                 </p>
                 <p className="text-blue-700 text-sm mt-1">
-                  Entering grades for: {classData?.class_name} • {students.length} students • {subjects.length} subjects
+                  Entering grades for: {classData?.class_name} •{" "}
+                  {students.length} students • {subjects.length} subjects
                 </p>
               </div>
             </div>
@@ -284,7 +278,7 @@ const ClassGrades = () => {
                   onSave={handleGradesSaved}
                 />
               </div>
-              
+
               <div className="mt-6">
                 <GradeImport
                   classId={classId}
@@ -306,14 +300,21 @@ const ClassGrades = () => {
 
           {/* Quick Actions */}
           <div className="bg-gray-50 rounded-lg p-4 mt-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Quick Tips</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-3">
+              Quick Tips
+            </h3>
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• Select a subject and term to start entering grades</li>
-              <li>• Enter class scores (out of 50) and exam scores (out of 50)</li>
+              <li>
+                • Enter class scores (out of 50) and exam scores (out of 50)
+              </li>
               <li>• Total score is automatically calculated</li>
               <li>• Click "Save All Grades" when done with all students</li>
               <li>• Green "Saved" badge shows already recorded grades</li>
-              <li>• Current selections: {getAcademicYearLabel()} • Term {getTermLabel()}</li>
+              <li>
+                • Current selections: {getAcademicYearLabel()} • Term{" "}
+                {getTermLabel()}
+              </li>
             </ul>
           </div>
         </>

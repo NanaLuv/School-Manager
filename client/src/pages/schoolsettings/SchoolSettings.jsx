@@ -40,15 +40,15 @@ const SchoolSettings = () => {
     receipt_footer: "",
     bill_terms: "",
     late_fee_percentage: 5.0,
-    school_logo: null, 
-    logo_filename: "", 
+    school_logo: null,
+    logo_filename: "",
   });
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("basic");
-  const [userId, setUserId] = useState(1); // You should get this from auth
+  const [userId, setUserId] = useState(1); // get this from auth
   const [logoPreview, setLogoPreview] = useState("");
 
   useEffect(() => {
@@ -58,9 +58,7 @@ const SchoolSettings = () => {
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const response = await api.get(
-        "/school-settings"
-      );
+      const response = await api.get("/school-settings");
 
       let phoneNumbers = response.data.phone_numbers;
       if (typeof phoneNumbers === "string") {
@@ -106,94 +104,90 @@ const SchoolSettings = () => {
     setLogoPreview(URL.createObjectURL(file));
   };
 
-
   //handle form submit
-const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  try {
-    setSaving(true);
-    setMessage("");
+    try {
+      setSaving(true);
+      setMessage("");
 
-    // Create FormData object
-    const formData = new FormData();
+      // Create FormData object
+      const formData = new FormData();
 
-    // Add all text fields to FormData
-    const fieldsToSend = {
-      ...settings,
-      phone_numbers: JSON.stringify(
-        settings.phone_numbers.filter((num) => num.trim() !== "")
-      ),
-      updated_by: userId,
-      // Convert empty strings to null for optional fields
-      swift_code: settings.swift_code || null,
-      mobile_money_provider: settings.mobile_money_provider || null,
-      mobile_money_number: settings.mobile_money_number || null,
-      bill_terms: settings.bill_terms || null,
-      school_short_name: settings.school_short_name || null,
-      motto: settings.motto || null,
-      city: settings.city || null,
-      region: settings.region || null,
-      postal_code: settings.postal_code || null,
-      website: settings.website || null,
-      principal_name: settings.principal_name || null,
-      registration_number: settings.registration_number || null,
-      bank_name: settings.bank_name || null,
-      branch_name: settings.branch_name || null,
-      account_number: settings.account_number || null,
-      account_name: settings.account_name || null,
-      receipt_footer: settings.receipt_footer || null,
-    };
+      // Add all text fields to FormData
+      const fieldsToSend = {
+        ...settings,
+        phone_numbers: JSON.stringify(
+          settings.phone_numbers.filter((num) => num.trim() !== ""),
+        ),
+        updated_by: userId,
+        // Convert empty strings to null for optional fields
+        swift_code: settings.swift_code || null,
+        mobile_money_provider: settings.mobile_money_provider || null,
+        mobile_money_number: settings.mobile_money_number || null,
+        bill_terms: settings.bill_terms || null,
+        school_short_name: settings.school_short_name || null,
+        motto: settings.motto || null,
+        city: settings.city || null,
+        region: settings.region || null,
+        postal_code: settings.postal_code || null,
+        website: settings.website || null,
+        principal_name: settings.principal_name || null,
+        registration_number: settings.registration_number || null,
+        bank_name: settings.bank_name || null,
+        branch_name: settings.branch_name || null,
+        account_number: settings.account_number || null,
+        account_name: settings.account_name || null,
+        receipt_footer: settings.receipt_footer || null,
+      };
 
-    // Remove school_logo from fieldsToSend since we handle it separately
-    delete fieldsToSend.school_logo;
-    delete fieldsToSend.logo_filename;
+      // Remove school_logo from fieldsToSend since we handle it separately
+      delete fieldsToSend.school_logo;
+      delete fieldsToSend.logo_filename;
 
-    // Add all fields to FormData
-    Object.keys(fieldsToSend).forEach((key) => {
-      if (fieldsToSend[key] !== null && fieldsToSend[key] !== undefined) {
-        formData.append(key, fieldsToSend[key]);
+      // Add all fields to FormData
+      Object.keys(fieldsToSend).forEach((key) => {
+        if (fieldsToSend[key] !== null && fieldsToSend[key] !== undefined) {
+          formData.append(key, fieldsToSend[key]);
+        }
+      });
+
+      // Add the file if it exists
+      if (settings.school_logo && settings.school_logo instanceof File) {
+        formData.append("school_logo", settings.school_logo);
       }
-    });
 
-    // Add the file if it exists
-    if (settings.school_logo && settings.school_logo instanceof File) {
-      formData.append("school_logo", settings.school_logo);
-    }
-
-    // Send with multipart/form-data headers
-    const response = await api.post(
-      "/school-settings",
-      formData,
-      {
+      // Send with multipart/form-data headers
+      const response = await api.post("/school-settings", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
+      });
+
+      // Update local state with response
+      if (response.data.logo_filename) {
+        setSettings((prev) => ({
+          ...prev,
+          logo_filename: response.data.logo_filename,
+        }));
+        setLogoPreview(
+          `http://localhost:3001/uploads/school-logo/${response.data.logo_filename}`,
+        );
       }
-    );
 
-    // Update local state with response
-    if (response.data.logo_filename) {
-      setSettings((prev) => ({
-        ...prev,
-        logo_filename: response.data.logo_filename,
-      }));
-      setLogoPreview(
-        `http://localhost:3001/uploads/school-logo/${response.data.logo_filename}`
+      setMessage("Settings saved successfully!");
+      setTimeout(() => setMessage(""), 3000);
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      setMessage(
+        "Error saving settings: " +
+          (error.response?.data?.error || error.message),
       );
+    } finally {
+      setSaving(false);
     }
-
-    setMessage("Settings saved successfully!");
-    setTimeout(() => setMessage(""), 3000);
-  } catch (error) {
-    console.error("Error saving settings:", error);
-    setMessage(
-      "Error saving settings: " + (error.response?.data?.error || error.message)
-    );
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;

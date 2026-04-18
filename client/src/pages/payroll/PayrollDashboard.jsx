@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   CurrencyDollarIcon,
   UserGroupIcon,
   CalendarIcon,
   ArrowTrendingUpIcon,
   DocumentTextIcon,
-  ArrowDownTrayIcon,
   PlusIcon,
 } from "@heroicons/react/24/outline";
 import PayrollSummary from "./PayrollSummary";
@@ -42,7 +40,6 @@ const PayrollDashboard = () => {
 
       const staffCount = staffRes.data.pagination?.total || 0;
       const periods = periodsRes.data || [];
-
 
       const processedPeriods = periods.filter((p) => p.is_processed).length;
       const pendingPeriods = periods.filter((p) => !p.is_processed).length;

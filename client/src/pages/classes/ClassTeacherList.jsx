@@ -9,7 +9,6 @@ import Modal from "../../components/common/Modal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import ClassTeacherTable from "../../components/classes/ClassTeacherTable";
 import ClassTeacherForm from "../../components/classes/ClassTeacherForm";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const ClassTeachersList = () => {
@@ -21,11 +20,9 @@ const ClassTeachersList = () => {
   const getClassTeachers = async () => {
     setLoading(true);
     try {
-      const response = await api.get(
-        "/getclassteachers"
-      );
+      const response = await api.get("/getclassteachers");
       setClassTeachers(response.data);
-      console.log("fetched class teachers:", response.data)
+      console.log("fetched class teachers:", response.data);
     } catch (error) {
       console.error("Error fetching class teachers:", error);
     }
@@ -49,19 +46,17 @@ const ClassTeachersList = () => {
   const handleDeleteAssignment = async (assignmentId) => {
     if (
       window.confirm(
-        "Are you sure you want to remove this teacher from the class?"
+        "Are you sure you want to remove this teacher from the class?",
       )
     ) {
       try {
-        await api.delete(
-          `/deleteclassteacher/${assignmentId}`
-        );
+        await api.delete(`/deleteclassteacher/${assignmentId}`);
         getClassTeachers();
       } catch (error) {
         console.error("Error deleting class teacher:", error);
         alert(
           "Error removing teacher assignment: " +
-            (error.response?.data?.error || error.message)
+            (error.response?.data?.error || error.message),
         );
       }
     }
@@ -72,13 +67,10 @@ const ClassTeachersList = () => {
       if (editingAssignment) {
         await api.put(
           `/updateclassteacher/${editingAssignment.id}`,
-          assignmentData
+          assignmentData,
         );
       } else {
-        await api.post(
-          "/assignclassteacher",
-          assignmentData
-        );
+        await api.post("/assignclassteacher", assignmentData);
       }
       setIsModalOpen(false);
       getClassTeachers();
@@ -86,17 +78,17 @@ const ClassTeachersList = () => {
       console.error("Error saving class teacher assignment:", error);
       alert(
         "Error saving assignment: " +
-          (error.response?.data?.error || error.message)
+          (error.response?.data?.error || error.message),
       );
     }
   };
 
   // Calculate statistics
   const mainTeachersCount = classTeachers.filter(
-    (ct) => ct.is_main_teacher
+    (ct) => ct.is_main_teacher,
   ).length;
   const assistantTeachersCount = classTeachers.filter(
-    (ct) => !ct.is_main_teacher
+    (ct) => !ct.is_main_teacher,
   ).length;
   const classesWithTeachers = [
     ...new Set(classTeachers.map((ct) => ct.class_id)),

@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   ChartBarIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
   UsersIcon,
   CalendarIcon,
 } from "@heroicons/react/24/outline";
@@ -35,9 +32,7 @@ const PayrollSummary = () => {
   const fetchPeriodsData = async () => {
     setLoading(true);
     try {
-      const response = await api.get(
-        "/payroll/getpayrollperiods"
-      );
+      const response = await api.get("/payroll/getpayrollperiods");
       const fetchedPeriods = response.data || [];
 
       // Format periods with month names
@@ -66,13 +61,11 @@ const PayrollSummary = () => {
     setLoading(true);
     try {
       // Get the selected period
-      const selectedPeriod = periods.find((p) => p.id == periodId);
+      const selectedPeriod = periods.find((p) => p.id === periodId);
       if (!selectedPeriod) return;
 
       // Get entries for this period
-      const response = await api.get(
-        `/payroll/entries/${periodId}`
-      );
+      const response = await api.get(`/payroll/entries/${periodId}`);
       const periodData = response.data || {};
 
       // Calculate summary
@@ -143,7 +136,7 @@ const PayrollSummary = () => {
 
   // Get available years
   const availableYears = [...new Set(periods.map((p) => p.period_year))].sort(
-    (a, b) => b - a
+    (a, b) => b - a,
   );
 
   if (loading) return <LoadingSpinner text="Loading summary..." />;
@@ -206,12 +199,12 @@ const PayrollSummary = () => {
                 Period:{" "}
                 {new Date(summaryData.period.start_date).toLocaleDateString(
                   "en-US",
-                  { month: "short", day: "numeric", year: "numeric" }
+                  { month: "short", day: "numeric", year: "numeric" },
                 )}{" "}
                 to{" "}
                 {new Date(summaryData.period.end_date).toLocaleDateString(
                   "en-US",
-                  { month: "short", day: "numeric", year: "numeric" }
+                  { month: "short", day: "numeric", year: "numeric" },
                 )}
               </p>
             </div>
@@ -229,7 +222,7 @@ const PayrollSummary = () => {
                 <p className="text-xs text-blue-600 mt-1">
                   Processed:{" "}
                   {new Date(
-                    summaryData.period.processed_at
+                    summaryData.period.processed_at,
                   ).toLocaleDateString()}
                 </p>
               )}
@@ -356,12 +349,12 @@ const PayrollSummary = () => {
                 <p className="font-medium">
                   {new Date(summaryData.period?.start_date).toLocaleDateString(
                     "en-US",
-                    { month: "short", day: "numeric", year: "numeric" }
+                    { month: "short", day: "numeric", year: "numeric" },
                   )}{" "}
                   to{" "}
                   {new Date(summaryData.period?.end_date).toLocaleDateString(
                     "en-US",
-                    { month: "short", day: "numeric", year: "numeric" }
+                    { month: "short", day: "numeric", year: "numeric" },
                   )}
                 </p>
               </div>

@@ -8,8 +8,6 @@ import {
   ChartBarIcon,
   Cog6ToothIcon,
   EnvelopeIcon,
-  PhoneIcon,
-  MapPinIcon,
 } from "@heroicons/react/24/outline";
 
 const Profile = () => {
@@ -34,8 +32,8 @@ const Profile = () => {
       time < 12
         ? "Good Morning"
         : time < 18
-        ? "Good Afternoon"
-        : "Good Evening";
+          ? "Good Afternoon"
+          : "Good Evening";
 
     const roleMessages = {
       admin: `${greeting}, ${name}! Welcome to the Administrator Dashboard. You have full system control and management capabilities.`,

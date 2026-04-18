@@ -10,7 +10,6 @@ import Modal from "../../components/common/Modal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import GradingScalesTable from "../../components/grades/GradingScalesTable";
 import GradingScaleForm from "../../components/grades/GradingScaleForm";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const GradingScalesList = () => {
@@ -25,9 +24,7 @@ const GradingScalesList = () => {
   const getGradingScales = async () => {
     setLoading(true);
     try {
-      const response = await api.get(
-        "/getgradingscales"
-      );
+      const response = await api.get("/getgradingscales");
       setGradingScales(response.data);
     } catch (error) {
       console.error("Error fetching grading scales:", error);
@@ -52,19 +49,17 @@ const GradingScalesList = () => {
   const handleDeleteScale = async (scaleId) => {
     if (
       window.confirm(
-        "Are you sure you want to delete this grading scale? This may affect existing grade calculations."
+        "Are you sure you want to delete this grading scale? This may affect existing grade calculations.",
       )
     ) {
       try {
-        await api.delete(
-          `/deletegradingscale/${scaleId}`
-        );
+        await api.delete(`/deletegradingscale/${scaleId}`);
         getGradingScales();
       } catch (error) {
         console.error("Error deleting grading scale:", error);
         alert(
           "Error deleting grading scale: " +
-            (error.response?.data?.error || error.message)
+            (error.response?.data?.error || error.message),
         );
       }
     }
@@ -73,15 +68,9 @@ const GradingScalesList = () => {
   const handleSaveScale = async (scaleData) => {
     try {
       if (editingScale) {
-        await api.put(
-          `/updategradingscale/${editingScale.id}`,
-          scaleData
-        );
+        await api.put(`/updategradingscale/${editingScale.id}`, scaleData);
       } else {
-        await api.post(
-          "/creategradingscale",
-          scaleData
-        );
+        await api.post("/creategradingscale", scaleData);
       }
       setIsModalOpen(false);
       getGradingScales();
@@ -89,7 +78,7 @@ const GradingScalesList = () => {
       console.error("Error saving grading scale:", error);
       alert(
         "Error saving grading scale: " +
-          (error.response?.data?.error || error.message)
+          (error.response?.data?.error || error.message),
       );
     }
   };
@@ -101,9 +90,7 @@ const GradingScalesList = () => {
     }
 
     try {
-      const response = await api.get(
-        `/calculategrade/${calculatorScore}`
-      );
+      const response = await api.get(`/calculategrade/${calculatorScore}`);
       setCalculatedGrade(response.data);
     } catch (error) {
       console.error("Error calculating grade:", error);

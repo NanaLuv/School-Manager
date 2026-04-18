@@ -2,20 +2,18 @@ import React, { useState, useEffect } from "react";
 import {
   PlusIcon,
   UserIcon,
-  BanknotesIcon,
-  CalendarIcon,
   ExclamationTriangleIcon,
   TrashIcon,
   ArrowPathIcon,
   CreditCardIcon,
   FunnelIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
 } from "@heroicons/react/24/outline";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import api from "../../components/axiosconfig/axiosConfig";
+import { useAuth } from "../contexts/AuthContext";
 
 const ArrearsManagement = () => {
+  const userId = useAuth();
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -66,9 +64,7 @@ const ArrearsManagement = () => {
         api.get("/getclasses"),
         api.get("/getacademicyears"),
         api.get("/getterms"),
-        api.get(
-          "/getstudents?includeInactive=true"
-        ),
+        api.get("/getstudents?includeInactive=true"),
       ]);
 
       setClasses(classesRes.data);
@@ -79,7 +75,7 @@ const ArrearsManagement = () => {
       const currentYear = yearsRes.data.find((year) => year.is_current);
       if (currentYear) {
         const currentYearTerms = termsRes.data.filter(
-          (term) => term.academic_year_id === currentYear.id
+          (term) => term.academic_year_id === currentYear.id,
         );
 
         setFilters((prev) => ({
@@ -101,14 +97,14 @@ const ArrearsManagement = () => {
   useEffect(() => {
     if (filters.academic_year_id && allTerms.length > 0) {
       const termsForYear = allTerms.filter(
-        (term) => term.academic_year_id == filters.academic_year_id
+        (term) => term.academic_year_id === filters.academic_year_id,
       );
       setFilteredTerms(termsForYear);
 
       // Auto-select first term if current selection is invalid
       if (
         termsForYear.length > 0 &&
-        !termsForYear.some((term) => term.id == filters.term_id)
+        !termsForYear.some((term) => term.id === filters.term_id)
       ) {
         setFilters((prev) => ({ ...prev, term_id: termsForYear[0].id }));
       }
@@ -119,13 +115,13 @@ const ArrearsManagement = () => {
   useEffect(() => {
     if (newRecord.academic_year_id && allTerms.length > 0) {
       const termsForYear = allTerms.filter(
-        (term) => term.academic_year_id == newRecord.academic_year_id
+        (term) => term.academic_year_id === newRecord.academic_year_id,
       );
 
       // Auto-select first term if current selection is invalid
       if (
         termsForYear.length > 0 &&
-        !termsForYear.some((term) => term.id == newRecord.term_id)
+        !termsForYear.some((term) => term.id === newRecord.term_id)
       ) {
         setNewRecord((prev) => ({ ...prev, term_id: termsForYear[0].id }));
       }
@@ -138,7 +134,7 @@ const ArrearsManagement = () => {
     // Class filter
     if (filters.class_id) {
       filtered = filtered.filter(
-        (student) => student.class_id == filters.class_id
+        (student) => student.class_id === filters.class_id,
       );
     }
 
@@ -149,7 +145,7 @@ const ArrearsManagement = () => {
         (student) =>
           student.first_name.toLowerCase().includes(searchTerm) ||
           student.last_name.toLowerCase().includes(searchTerm) ||
-          student.admission_number.toLowerCase().includes(searchTerm)
+          student.admission_number.toLowerCase().includes(searchTerm),
       );
     }
 
@@ -168,17 +164,10 @@ const ArrearsManagement = () => {
 
   const fetchStudentRecords = async (studentId) => {
     try {
-
       const [arrearsRes, overpaymentsRes] = await Promise.all([
-        api.get(
-          `/getstudentarrears/${studentId}`
-        ),
-        api.get(
-          `/getstudentoverpayments/${studentId}`
-        ),
+        api.get(`/getstudentarrears/${studentId}`),
+        api.get(`/getstudentoverpayments/${studentId}`),
       ]);
-
-      
 
       setArrears(arrearsRes.data);
       setOverpayments(overpaymentsRes.data);
@@ -208,9 +197,7 @@ const ArrearsManagement = () => {
 
     try {
       const endpoint =
-        formType === "arrear"
-          ? "/addstudentarrear"
-          : "/addstudentoverpayment";
+        formType === "arrear" ? "/addstudentarrear" : "/addstudentoverpayment";
 
       const payload =
         formType === "arrear"
@@ -220,7 +207,7 @@ const ArrearsManagement = () => {
               amount: parseFloat(newRecord.amount),
               academic_year_id: parseInt(newRecord.academic_year_id),
               term_id: parseInt(newRecord.term_id),
-              created_by: 1,
+              created_by: userId.id || 1,
             }
           : {
               student_id: selectedStudent.id,
@@ -230,9 +217,8 @@ const ArrearsManagement = () => {
               term_id: parseInt(newRecord.term_id),
               is_credit_note: newRecord.is_credit_note,
               can_refund: newRecord.can_refund,
-              created_by: 1,
+              created_by: userId.id || 1,
             };
-
 
       const response = await api.post(endpoint, payload);
 
@@ -251,14 +237,14 @@ const ArrearsManagement = () => {
       await fetchStudentRecords(selectedStudent.id);
 
       alert(
-        `${formType === "arrear" ? "Arrear" : "Overpayment"} added successfully`
+        `${formType === "arrear" ? "Arrear" : "Overpayment"} added successfully`,
       );
     } catch (error) {
       console.error(`Error adding ${formType}:`, error);
       alert(
         `Error adding ${formType}: ${
           error.response?.data?.error || error.message
-        }`
+        }`,
       );
     }
   };
@@ -276,7 +262,7 @@ const ArrearsManagement = () => {
       await api.delete(endpoint);
       fetchStudentRecords(selectedStudent.id);
       alert(
-        `${type === "arrear" ? "Arrear" : "Overpayment"} deleted successfully`
+        `${type === "arrear" ? "Arrear" : "Overpayment"} deleted successfully`,
       );
     } catch (error) {
       console.error(`Error deleting ${type}:`, error);
@@ -287,7 +273,7 @@ const ArrearsManagement = () => {
   const calculateTotalArrears = () => {
     return arrears.reduce(
       (total, arrear) => total + parseFloat(arrear.amount),
-      0
+      0,
     );
   };
 
@@ -296,7 +282,7 @@ const ArrearsManagement = () => {
       .filter((op) => op.status === "Active")
       .reduce(
         (total, overpayment) => total + parseFloat(overpayment.amount),
-        0
+        0,
       );
   };
 
@@ -319,7 +305,7 @@ const ArrearsManagement = () => {
 
       if (defaultYear) {
         const yearTerms = allTerms.filter(
-          (term) => term.academic_year_id === defaultYear.id
+          (term) => term.academic_year_id === defaultYear.id,
         );
 
         setNewRecord((prev) => ({
@@ -335,14 +321,14 @@ const ArrearsManagement = () => {
       const currentYear = academicYears.find((year) => year.is_current);
       if (currentYear) {
         const currentYearTerms = allTerms.filter(
-          (term) => term.academic_year_id === currentYear.id
+          (term) => term.academic_year_id === currentYear.id,
         );
 
         setNewRecord((prev) => ({
           ...prev,
           academic_year_id: currentYear.id,
           term_id:
-            currentYearTerms.find((term) => term.id == filters.term_id)?.id ||
+            currentYearTerms.find((term) => term.id === filters.term_id)?.id ||
             currentYearTerms[0]?.id ||
             "",
           description: "",
@@ -780,7 +766,7 @@ const ArrearsManagement = () => {
                           <div className="text-sm text-gray-500">
                             Added:{" "}
                             {new Date(
-                              overpayment.created_at
+                              overpayment.created_at,
                             ).toLocaleDateString()}
                             {overpayment.is_credit_note && (
                               <span className="ml-2 text-blue-600 font-medium">
@@ -885,7 +871,7 @@ const ArrearsManagement = () => {
                           {academicYears
                             .sort(
                               (a, b) =>
-                                new Date(b.start_date) - new Date(a.start_date)
+                                new Date(b.start_date) - new Date(a.start_date),
                             ) // Most recent first
                             .map((year) => (
                               <option
@@ -925,19 +911,19 @@ const ArrearsManagement = () => {
                           {allTerms
                             .filter(
                               (term) =>
-                                term.academic_year_id ==
-                                newRecord.academic_year_id
+                                term.academic_year_id ===
+                                newRecord.academic_year_id,
                             )
                             .sort(
                               (a, b) =>
-                                new Date(a.start_date) - new Date(b.start_date)
+                                new Date(a.start_date) - new Date(b.start_date),
                             ) // Chronological order
                             .map((term) => (
                               <option key={term.id} value={term.id}>
                                 {term.term_name}
                                 {term.start_date &&
                                   ` (${new Date(
-                                    term.start_date
+                                    term.start_date,
                                   ).toLocaleDateString()})`}
                               </option>
                             ))}

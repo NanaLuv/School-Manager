@@ -65,11 +65,11 @@ const TermTable = ({
   };
 
   // Get the selected year label for display
-  const getSelectedYearLabel = () => {
-    if (!selectedYearId) return "Select Year";
-    const year = academicYears?.find((y) => y.id.toString() === selectedYearId);
-    return year ? year.year_label : "Unknown Year";
-  };
+  // const getSelectedYearLabel = () => {
+  //   if (!selectedYearId) return "Select Year";
+  //   const year = academicYears?.find((y) => y.id.toString() === selectedYearId);
+  //   return year ? year.year_label : "Unknown Year";
+  // };
 
   // Get the status of a term
   const getTermStatus = (term) => {

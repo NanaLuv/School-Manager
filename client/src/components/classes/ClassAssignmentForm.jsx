@@ -67,11 +67,11 @@ const ClassAssignmentForm = ({
 
     // Check if student is already enrolled in this class for the selected year
     const existingAssignment = students
-      .find((s) => s.id == formData.student_id)
+      .find((s) => s.id === formData.student_id)
       ?.assignments?.find(
         (a) =>
-          a.academic_year_id == formData.academic_year_id &&
-          a.class_id == formData.class_id
+          a.academic_year_id === formData.academic_year_id &&
+          a.class_id === formData.class_id
       );
 
     if (existingAssignment && !assignment) {
@@ -91,18 +91,18 @@ const ClassAssignmentForm = ({
   };
 
   // Get unassigned students for selected academic year
-  const getAvailableStudents = () => {
-    if (!formData.academic_year_id) return students;
+  // const getAvailableStudents = () => {
+  //   if (!formData.academic_year_id) return students;
 
-    return students.filter((student) => {
-      const hasAssignment = assignment?.some(
-        (assignment) =>
-          assignment.student_id === student.id &&
-          assignment.academic_year_id == formData.academic_year_id
-      );
-      return !hasAssignment;
-    });
-  };
+  //   return students.filter((student) => {
+  //     const hasAssignment = assignment?.some(
+  //       (assignment) =>
+  //         assignment.student_id === student.id &&
+  //         assignment.academic_year_id == formData.academic_year_id
+  //     );
+  //     return !hasAssignment;
+  //   });
+  // };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

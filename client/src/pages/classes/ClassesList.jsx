@@ -12,7 +12,6 @@ import Modal from "../../components/common/Modal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import ClassForm from "../../components/classes/ClassForm";
 import ClassTable from "../../components/classes/ClassTable";
-import axios from "axios";
 import { useAuth } from "../contexts/AuthContext";
 import debounce from "lodash/debounce";
 import api from "../../components/axiosconfig/axiosConfig";
@@ -51,12 +50,7 @@ const ClassesList = () => {
           sort_order: filters.sort_order || sortOrder,
         };
 
-
-        const response = await api.get(
-          `/getclasses`,
-          { params }
-        );
-
+        const response = await api.get(`/getclasses`, { params });
 
         // Handle the paginated response
         if (response.data.pagination) {
@@ -79,7 +73,7 @@ const ClassesList = () => {
         setLoading(false);
       }
     },
-    [searchTerm, filterStatus, sortBy, sortOrder]
+    [searchTerm, filterStatus, sortBy, sortOrder],
   );
 
   // Initial load
@@ -93,7 +87,7 @@ const ClassesList = () => {
       setCurrentPage(1);
       getClasses(1, { search: searchValue });
     }, 500),
-    [getClasses]
+    [getClasses],
   );
 
   useEffect(() => {
@@ -143,9 +137,7 @@ const ClassesList = () => {
   const handleDeleteClass = async (classId) => {
     if (window.confirm("Are you sure you want to delete this class?")) {
       try {
-        await api.delete(
-          `/deleteclass/${classId}`
-        );
+        await api.delete(`/deleteclass/${classId}`);
         // Refresh current page
         getClasses(currentPage);
       } catch (error) {
@@ -158,10 +150,7 @@ const ClassesList = () => {
   const handleSaveClass = async (classData) => {
     try {
       if (editingClass) {
-        await api.put(
-          `/updateclass/${editingClass.id}`,
-          classData
-        );
+        await api.put(`/updateclass/${editingClass.id}`, classData);
       } else {
         await api.post("/createclass", classData);
       }
@@ -229,10 +218,10 @@ const ClassesList = () => {
 
     const full = classes.filter((c) => c.capacity_status === "error").length;
     const nearlyFull = classes.filter(
-      (c) => c.capacity_status === "warning"
+      (c) => c.capacity_status === "warning",
     ).length;
     const available = classes.filter(
-      (c) => c.capacity_status === "success"
+      (c) => c.capacity_status === "success",
     ).length;
 
     return { full, nearlyFull, available };
@@ -381,7 +370,7 @@ const ClassesList = () => {
             {classes.length > 0
               ? Math.round(
                   classes.reduce((sum, cls) => sum + (cls.capacity || 0), 0) /
-                    classes.length
+                    classes.length,
                 )
               : 0}{" "}
             per class
@@ -395,7 +384,7 @@ const ClassesList = () => {
           <p className="text-3xl font-bold text-amber-900 mt-2">
             {classes.reduce(
               (sum, cls) => sum + (cls.current_student_count || 0),
-              0
+              0,
             )}
           </p>
           <div className="flex items-center text-sm text-amber-600 mt-2">
@@ -530,8 +519,8 @@ const ClassesList = () => {
                                 pageNum === currentPage
                                   ? "bg-emerald-600 text-white shadow-sm"
                                   : pageNum === "..."
-                                  ? "text-gray-400 cursor-default"
-                                  : "text-gray-700 hover:bg-gray-100 border border-transparent hover:border-gray-300"
+                                    ? "text-gray-400 cursor-default"
+                                    : "text-gray-700 hover:bg-gray-100 border border-transparent hover:border-gray-300"
                               }`}
                               disabled={pageNum === "..."}
                               aria-current={

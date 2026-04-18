@@ -1,6 +1,5 @@
 // Updated Dashboard.js with optimized API calls
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   AcademicCapIcon,
   UserGroupIcon,
@@ -12,14 +11,10 @@ import {
   ExclamationTriangleIcon,
   ArrowTrendingUpIcon,
   CheckCircleIcon,
-  XCircleIcon,
-  UsersIcon,
   BuildingLibraryIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import Sidebar from "../../components/sidebar/sidebar";
 import { useAuth } from "../contexts/AuthContext";
-import Topbar from "../../components/sidebar/Topbar";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const Dashboard = () => {
@@ -61,7 +56,7 @@ const Dashboard = () => {
 
   const [refreshTime, setRefreshTime] = useState("");
 
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchDashboardData();
@@ -275,7 +270,7 @@ const Dashboard = () => {
                 </span>
                 <span
                   className={`text-sm font-semibold ${getCollectionColor(
-                    stats.finance.collectionRate
+                    stats.finance.collectionRate,
                   )}`}
                 >
                   {stats.finance.collectionRate}%
@@ -287,8 +282,8 @@ const Dashboard = () => {
                     stats.finance.collectionRate >= 80
                       ? "bg-green-500"
                       : stats.finance.collectionRate >= 60
-                      ? "bg-amber-500"
-                      : "bg-red-500"
+                        ? "bg-amber-500"
+                        : "bg-red-500"
                   }`}
                   style={{
                     width: `${Math.min(stats.finance.collectionRate, 100)}%`,
@@ -370,8 +365,8 @@ const Dashboard = () => {
                         activity.type === "payment"
                           ? "bg-green-100"
                           : activity.type === "attendance"
-                          ? "bg-blue-100"
-                          : "bg-amber-100"
+                            ? "bg-blue-100"
+                            : "bg-amber-100"
                       }`}
                     >
                       {activity.type === "payment" && (
@@ -389,7 +384,8 @@ const Dashboard = () => {
                         {activity.description}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {new Date(activity.activity_date).toLocaleDateString()} •
+                        {new Date(activity.activity_date).toLocaleDateString()}{" "}
+                        •
                         {/* {new Date(activity.activity_date).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -433,8 +429,8 @@ const Dashboard = () => {
                       stats.today.attendance.rate >= 90
                         ? "#10b981"
                         : stats.today.attendance.rate >= 75
-                        ? "#f59e0b"
-                        : "#ef4444"
+                          ? "#f59e0b"
+                          : "#ef4444"
                     }
                     strokeWidth="10"
                     strokeLinecap="round"
@@ -448,7 +444,7 @@ const Dashboard = () => {
                   <div>
                     <span
                       className={`text-2xl font-bold ${getAttendanceColor(
-                        stats.today.attendance.rate
+                        stats.today.attendance.rate,
                       )}`}
                     >
                       {stats.today.attendance.rate}%

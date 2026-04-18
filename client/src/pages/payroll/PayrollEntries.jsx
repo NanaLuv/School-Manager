@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
-  CalculatorIcon,
   CheckCircleIcon,
-  XCircleIcon,
   EyeIcon,
   PencilIcon,
   DocumentArrowDownIcon,
@@ -21,8 +18,6 @@ import LoadingSpinner from "../../components/common/LoadingSpinner";
 import Modal from "../../components/common/Modal";
 import CreateEntryForm from "./CreateEntryForm";
 import EditEntryForm from "./EditEntryForm";
-
-import { format, parseISO } from "date-fns";
 import api from "../../components/axiosconfig/axiosConfig";
 
 const PayrollEntries = () => {
