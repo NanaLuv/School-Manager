@@ -20,8 +20,8 @@ const app = express();
 // app.get("/test", (req, res) => {
 //   res.json({ message: "CORS working" });
 // });
-// app.use(express.json());
-// // app.use("/schmgt", router);
+app.use(express.json());
+app.use("/schmgt", router);
 // app.use("/uploads", express.static("uploads"));
 // app.use("/uploads/school-logo", express.static("uploads/school-logo"));
 
@@ -33,41 +33,33 @@ const app = express();
 // //   });
 // // }
 
-// const port = process.env.PORT || process.env.SERVER_PORT || 5000;
+const port = process.env.PORT || process.env.SERVER_PORT || 5000;
 
-// async function testConnection() {
-//   try {
-//     const connection = await pool.getConnection();
-//     console.log("Database connected successfully");
-//     connection.release();
-//   } catch (err) {
-//     console.error("Database connection failed:", err);
-//     // process.exit(1);
-//     console.error("DB failed, but keeping server alive");
-//   }
-// }
-
-// app.get("/", (req, res) => {
-//   res.send("API is running");
-// });
-
-// app.listen(port, "0.0.0.0", () => {
-//   console.log("Server running on port " + port);
-//   testConnection();
-// });
-
-// const express = require("express");
-
-// const app = express();
-
-app.get("/", (req, res) => {
-  res.send("server is running successfully");
-});
-
-const port = process.env.PORT;
+async function testConnection() {
+  try {
+    const connection = await pool.getConnection();
+    console.log("Database connected successfully");
+    connection.release();
+  } catch (err) {
+    console.error("Database connection failed:", err);
+    process.exit(1);
+    // console.error("DB failed, but keeping server alive");
+  }
+}
 
 app.listen(port, "0.0.0.0", () => {
   console.log("Server running on port " + port);
+  testConnection();
 });
+
+
+
+
+
+
+
+// app.listen(port, "0.0.0.0", () => {
+//   console.log("Server running on port " + port);
+// });
 
 module.exports = app;
