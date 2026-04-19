@@ -9,7 +9,6 @@ import {
   DocumentCheckIcon,
   MagnifyingGlassIcon,
   ArrowPathIcon,
-  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -45,8 +44,8 @@ const ReceivePayment = () => {
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [selectedClass, setSelectedClass] = useState("");
   const [billsLoading, setBillsLoading] = useState(false);
-  // const [arrearsTotal, setArrearsTotal] = useState(0);
-  // const [overpaymentsTotal, setOverpaymentsTotal] = useState(0);
+  const [arrearsTotal, setArrearsTotal] = useState(0);
+  const [overpaymentsTotal, setOverpaymentsTotal] = useState(0);
   const [finalizedBill, setFinalizedBill] = useState(null);
   const [paymentError, setPaymentError] = useState("");
   const [billDescriptions, setBillDescriptions] = useState({});
@@ -633,7 +632,7 @@ const ReceivePayment = () => {
     // Check allocations don't exceed individual bill remaining amounts
     return Object.entries(allocations).every(([billId, amount]) => {
       if (amount === 0) return true;
-      const bill = studentBills.find((b) => b.id === billId);
+      const bill = studentBills.find((b) => b.id == billId);
       if (!bill) return false;
       const billRemaining = getRemainingAmount(bill, finalizedBill);
       return amount <= billRemaining;
