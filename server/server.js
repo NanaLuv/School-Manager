@@ -61,7 +61,7 @@ const app = express();
 // const app = express();
 
 app.get("/", (req, res) => {
-  res.send("Server is alive");
+  res.send("OK");
 });
 
 const port = process.env.PORT || 5000;
