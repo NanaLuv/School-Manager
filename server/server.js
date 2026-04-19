@@ -32,7 +32,7 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: "*",
+    origin: "https://school-manager-rhab.vercel.app/",
     credentials: true,
   }),
 );
