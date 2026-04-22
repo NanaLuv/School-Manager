@@ -4,14 +4,19 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   XMarkIcon,
+  ClockIcon,
+  UserIcon,
   MagnifyingGlassIcon,
+  FunnelIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   DocumentArrowDownIcon,
   CalendarIcon,
   EyeIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
+import axios from "axios";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -254,13 +259,13 @@ const TakeAttendance = () => {
         notes: student.attendance_notes || "",
       }));
 
-      // const response = await api.post("/attendance/bulk", {
-      //   attendance_data,
-      //   academic_year_id,
-      //   term_id,
-      //   date: attendanceDate,
-      //   recorded_by,
-      // });
+      const response = await api.post("/attendance/bulk", {
+        attendance_data,
+        academic_year_id,
+        term_id,
+        date: attendanceDate,
+        recorded_by,
+      });
 
       alert("Attendance saved successfully!");
       fetchPreviousAttendance(); // Refresh previous attendance

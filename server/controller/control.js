@@ -5231,13 +5231,6 @@ const markBulkAttendance = async (req, res) => {
     let { attendance_data, academic_year_id, term_id, date, recorded_by } =
       req.body;
 
-    console.log("Bulk attendance data:", {
-      attendance_data_count: attendance_data?.length,
-      academic_year_id,
-      term_id,
-      date,
-      recorded_by,
-    });
 
     if (
       !attendance_data ||
@@ -5266,7 +5259,6 @@ const markBulkAttendance = async (req, res) => {
         });
       }
       academic_year_id = currentYear[0].id;
-      console.log("Using academic_year_id from database:", academic_year_id);
     }
 
     // FIX: Get term_id if not provided
@@ -5276,7 +5268,6 @@ const markBulkAttendance = async (req, res) => {
       );
       if (currentTerm.length > 0) {
         term_id = currentTerm[0].id;
-        console.log("Using term_id from database:", term_id);
       } else {
         // Fallback to first term
         const [firstTerm] = await connection.query(
@@ -5284,7 +5275,6 @@ const markBulkAttendance = async (req, res) => {
         );
         if (firstTerm.length > 0) {
           term_id = firstTerm[0].id;
-          console.log("Using first term_id:", term_id);
         }
       }
     }
@@ -5297,15 +5287,6 @@ const markBulkAttendance = async (req, res) => {
     for (const record of attendance_data) {
       try {
         const { student_id, status, notes } = record;
-
-        console.log("Processing attendance for student:", {
-          student_id,
-          status,
-          notes,
-          academic_year_id,
-          term_id,
-          date,
-        });
 
         // Validate required fields
         if (!student_id || !status) {
@@ -5332,7 +5313,6 @@ const markBulkAttendance = async (req, res) => {
               term_id,
             ],
           );
-          console.log(`Updated attendance for student ${student_id}`);
         } else {
           // Insert new
           await connection.query(
@@ -5347,7 +5327,6 @@ const markBulkAttendance = async (req, res) => {
               recorded_by,
             ],
           );
-          console.log(`Created new attendance for student ${student_id}`);
         }
 
         results.success++;
@@ -5362,7 +5341,6 @@ const markBulkAttendance = async (req, res) => {
 
     await connection.commit();
 
-    console.log("Bulk attendance completed:", results);
 
     res.json({
       message: `Attendance marked for ${results.success} students`,
@@ -6181,17 +6159,6 @@ const exportAttendanceReport = async (req, res) => {
       return res.status(400).json({ error: "Class ID is required" });
     }
 
-    console.log("Export request received:", {
-      class_id,
-      academic_year_id,
-      term_id,
-      report_type,
-      start_date,
-      end_date,
-      month,
-      year,
-      format,
-    });
 
     // Get report data by calling the report generation function directly
     let reportData;
@@ -6211,16 +6178,6 @@ const exportAttendanceReport = async (req, res) => {
         throw new Error("Failed to generate report data");
       }
 
-      console.log("Report data generated successfully:", {
-        hasStudents: !!reportData.students,
-        studentCount: reportData.students ? reportData.students.length : 0,
-        hasDailySummary: !!reportData.daily_summary,
-        dailySummaryCount: reportData.daily_summary
-          ? reportData.daily_summary.length
-          : 0,
-        reportTitle: reportData.report_title,
-        className: reportData.class_name,
-      });
     } catch (reportError) {
       console.error("Error generating report for export:", reportError);
       return res.status(500).json({
@@ -7355,18 +7312,6 @@ const generateBillsFromTemplates = async (req, res) => {
         index === self.findIndex((b) => b.student_id === balance.student_id),
     );
 
-    console.log("Found students with immediate previous term balances:", {
-      count: uniqueBalances.length,
-      current_term: `${currentYearLabel} - ${termName}`,
-      is_first_term: isFirstTerm,
-      students: uniqueBalances.map((s) => ({
-        name: `${s.first_name} ${s.last_name}`,
-        balance: s.outstanding_balance,
-        previous_period: s.previous_period,
-        existing_arrears: s.existing_arrears_count,
-      })),
-    });
-
     // Get all bill templates
     const [templates] = await connection.query(
       `SELECT * FROM bill_templates 
@@ -7808,7 +7753,6 @@ const checkStudentPayments = async (req, res) => {
       [studentId, academic_year_id, term_id],
     );
 
-    console.log("Payment count result:", payments[0]);
 
     res.json({
       hasPayments: payments[0].payment_count > 0,
@@ -9303,7 +9247,6 @@ const processPayment = async (req, res) => {
       bill_descriptions,
     } = req.body;
 
-    console.log("Processing payment for student_id:", student_id);
 
     if (!student_id) {
       console.error("student_id is undefined in req.body");

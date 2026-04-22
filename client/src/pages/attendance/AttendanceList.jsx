@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarIcon, PlusIcon } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
+import axios from "axios";
 import { useAcademicData } from "../../hooks/useAcademicContext";
 import api from "../../components/axiosconfig/axiosConfig";
 
@@ -365,7 +366,7 @@ const AttendanceList = () => {
               </tbody>
             </table>
 
-            {attendanceRecords.length === 0 && (
+            {attendanceRecords.length == 0 && (
               <div className="text-center py-12">
                 <CalendarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
