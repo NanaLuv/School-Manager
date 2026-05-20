@@ -6877,11 +6877,458 @@ const calculateStudentPaymentStatus = (finalizedBill, bills) => {
   }
 };
 
+// GET /api/student-bills - Get student bills with filters AND PAGINATION
+// const getStudentBills = async (req, res) => {
+//   try {
+//     const {
+//       class_id,
+//       academic_year_id,
+//       term_id,
+//       student_id,
+//       status,
+//       active_only,
+//       page = 1,
+//       limit = 20,
+//     } = req.query;
+
+//     let whereConditions = ["1=1"];
+//     let queryParams = [];
+
+//     if (active_only === "true") {
+//       whereConditions.push("(s.is_active IS NULL OR s.is_active = TRUE)");
+//     }
+
+//     if (class_id) {
+//       whereConditions.push(`
+//         b.student_id IN (
+//           SELECT student_id FROM class_assignments 
+//           WHERE class_id = ? AND academic_year_id = COALESCE(?, ca.academic_year_id)
+//         )
+//       `);
+//       queryParams.push(class_id);
+//       if (academic_year_id) {
+//         queryParams.push(academic_year_id);
+//       }
+//     }
+
+//     if (academic_year_id) {
+//       whereConditions.push("bt.academic_year_id = ?");
+//       queryParams.push(academic_year_id);
+//     }
+
+//     if (term_id) {
+//       whereConditions.push("bt.term_id = ?");
+//       queryParams.push(term_id);
+//     }
+
+//     if (student_id) {
+//       whereConditions.push("b.student_id = ?");
+//       queryParams.push(student_id);
+//     }
+
+//     // Calculate offset for pagination
+//     const pageNum = parseInt(page);
+//     const limitNum = parseInt(limit);
+//     const offset = (pageNum - 1) * limitNum;
+
+//     // FIRST: Get total count for pagination
+//     const [countResult] = await pool.query(
+//       `
+//       SELECT COUNT(DISTINCT s.id) as total
+//       FROM bills b
+//       LEFT JOIN bill_templates bt ON b.bill_template_id = bt.id
+//       LEFT JOIN students s ON b.student_id = s.id
+//       LEFT JOIN class_assignments ca ON s.id = ca.student_id AND bt.academic_year_id = ca.academic_year_id
+//       LEFT JOIN classes c ON ca.class_id = c.id
+//       LEFT JOIN academic_years ay ON bt.academic_year_id = ay.id
+//       LEFT JOIN terms t ON bt.term_id = t.id
+//       LEFT JOIN fee_categories fc ON bt.fee_category_id = fc.id
+//       LEFT JOIN student_term_bills stb ON (
+//         s.id = stb.student_id AND 
+//         bt.academic_year_id = stb.academic_year_id AND 
+//         bt.term_id = stb.term_id AND
+//         stb.is_finalized = TRUE
+//       )
+//       WHERE ${whereConditions.join(" AND ")}
+//       `,
+//       queryParams,
+//     );
+
+//     const total = countResult[0].total;
+//     const totalPages = Math.ceil(total / limitNum);
+
+//     // SECOND: Get paginated student bills
+//     const [bills] = await pool.query(
+//       `
+//       SELECT 
+//         b.*,
+//         bt.description,
+//         bt.is_compulsory,
+//         bt.academic_year_id,
+//         bt.term_id,
+//         s.first_name,
+//         s.last_name,
+//         s.admission_number,
+//         s.is_active,
+//         c.class_name,
+//         c.id as class_id,
+//         ay.year_label as academic_year,
+//         t.term_name,
+//         fc.category_name,
+//         stb.id as finalized_bill_id,
+//         stb.total_amount as finalized_total,
+//         stb.paid_amount as finalized_paid,
+//         stb.remaining_balance as finalized_balance,
+//         stb.is_fully_paid as finalized_fully_paid,
+//         stb.selected_bills as finalized_selected_bills
+//       FROM bills b
+//       LEFT JOIN bill_templates bt ON b.bill_template_id = bt.id
+//       LEFT JOIN students s ON b.student_id = s.id
+//       LEFT JOIN class_assignments ca ON s.id = ca.student_id AND bt.academic_year_id = ca.academic_year_id
+//       LEFT JOIN classes c ON ca.class_id = c.id
+//       LEFT JOIN academic_years ay ON bt.academic_year_id = ay.id
+//       LEFT JOIN terms t ON bt.term_id = t.id
+//       LEFT JOIN fee_categories fc ON bt.fee_category_id = fc.id
+//       LEFT JOIN student_term_bills stb ON (
+//         s.id = stb.student_id AND 
+//         bt.academic_year_id = stb.academic_year_id AND 
+//         bt.term_id = stb.term_id AND
+//         stb.is_finalized = TRUE
+//       )
+//       WHERE ${whereConditions.join(" AND ")}
+//       GROUP BY s.id, b.id
+//       ORDER BY s.first_name, s.last_name, b.due_date ASC
+//       LIMIT ? OFFSET ?
+//       `,
+//       [...queryParams, limitNum, offset],
+//     );
+
+//     // Process bills to apply edited amounts
+//     const processedBills = bills.map((bill) => {
+//       let finalBill = { ...bill };
+
+//       if (
+//         bill.finalized_selected_bills &&
+//         typeof bill.finalized_selected_bills === "string"
+//       ) {
+//         try {
+//           const selectedBillsData = JSON.parse(bill.finalized_selected_bills);
+//           const editedAmounts = selectedBillsData.edited_amounts || {};
+
+//           if (editedAmounts[bill.id]) {
+//             finalBill.finalized_amount = editedAmounts[bill.id];
+//             finalBill.amount = editedAmounts[bill.id];
+//             finalBill.has_custom_amount = true;
+//             finalBill.original_amount = bill.amount;
+//           }
+//         } catch (e) {
+//           console.error("Error parsing selected_bills:", e);
+//         }
+//       }
+
+//       return finalBill;
+//     });
+
+//     res.json({
+//       bills: processedBills,
+//       pagination: {
+//         page: pageNum,
+//         limit: limitNum,
+//         total,
+//         totalPages,
+//         hasNextPage: pageNum < totalPages,
+//         hasPrevPage: pageNum > 1,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error fetching student bills:", error);
+//     res.status(500).json({ error: "Failed to fetch student bills" });
+//   }
+// };
+
+
 
 // GET /api/getstudentbills - Get student bills with pagination
+// const getStudentBills = async (req, res) => {
+//   try {
+//     const {
+//       class_id,
+//       academic_year_id,
+//       term_id,
+//       status,
+//       active_only = "true",
+//       page = 1,
+//       limit = 20,
+//     } = req.query;
+
+//     const pageNum = parseInt(page);
+//     const limitNum = parseInt(limit);
+//     const offset = (pageNum - 1) * limitNum;
+
+//     // Build WHERE conditions for students
+//     let studentWhereConditions = ["1=1"];
+//     let queryParams = [];
+
+//     // Class filter
+//     if (class_id && class_id !== "") {
+//       studentWhereConditions.push("ca.class_id = ?");
+//       queryParams.push(class_id);
+//     }
+
+//     // Academic year filter for class assignments
+//     if (academic_year_id && academic_year_id !== "") {
+//       studentWhereConditions.push("ca.academic_year_id = ?");
+//       queryParams.push(academic_year_id);
+//     }
+
+//     // Active only filter
+//     if (active_only === "true") {
+//       studentWhereConditions.push("(s.is_active IS NULL OR s.is_active = TRUE)");
+//     }
+
+//     // ========== STEP 1: Get total count of UNIQUE students ==========
+//     const [countResult] = await pool.query(
+//       `SELECT COUNT(DISTINCT s.id) as total
+//        FROM students s
+//        INNER JOIN class_assignments ca ON s.id = ca.student_id
+//        WHERE ${studentWhereConditions.join(" AND ")}`,
+//       queryParams
+//     );
+
+//     const total = countResult[0].total;
+//     const totalPages = Math.ceil(total / limitNum);
+
+//     // ========== STEP 2: Get paginated students ==========
+//     const [paginatedStudents] = await pool.query(
+//       `SELECT DISTINCT
+//          s.id as student_id,
+//          s.first_name,
+//          s.last_name,
+//          s.admission_number,
+//          c.class_name,
+//          c.id as class_id
+//        FROM students s
+//        INNER JOIN class_assignments ca ON s.id = ca.student_id
+//        INNER JOIN classes c ON ca.class_id = c.id
+//        WHERE ${studentWhereConditions.join(" AND ")}
+//        ORDER BY s.first_name, s.last_name
+//        LIMIT ? OFFSET ?`,
+//       [...queryParams, limitNum, offset]
+//     );
+
+//     // If no students found, return empty result
+//     if (paginatedStudents.length === 0) {
+//       return res.json({
+//         success: true,
+//         bills: [],
+//         pagination: {
+//           page: pageNum,
+//           limit: limitNum,
+//           total: 0,
+//           totalPages: 0,
+//           hasNextPage: false,
+//           hasPrevPage: false,
+//         },
+//       });
+//     }
+
+//     // ========== STEP 3: Get bills for these specific students ==========
+//     const studentIds = paginatedStudents.map(s => s.student_id);
+//     const placeholders = studentIds.map(() => "?").join(",");
+
+//     // Build bill query conditions
+//     let billConditions = [`b.student_id IN (${placeholders})`];
+//     let billParams = [...studentIds];
+
+//     if (academic_year_id && academic_year_id !== "") {
+//       billConditions.push("bt.academic_year_id = ?");
+//       billParams.push(academic_year_id);
+//     }
+
+//     if (term_id && term_id !== "") {
+//       billConditions.push("bt.term_id = ?");
+//       billParams.push(term_id);
+//     }
+
+//     if (status && status !== "all") {
+//       billConditions.push("b.payment_status = ?");
+//       billParams.push(status);
+//     }
+
+//     const [bills] = await pool.query(
+//       `SELECT 
+//          b.id,
+//          b.student_id,
+//          b.amount,
+//          b.due_date,
+//          b.status as bill_status,
+//          b.paid_amount,
+//          b.remaining_amount,
+//          b.payment_status,
+//          b.description as bill_description,
+//          b.created_at,
+//          bt.id as template_id,
+//          bt.is_compulsory,
+//          bt.description as template_description,
+//          bt.academic_year_id,
+//          bt.term_id,
+//          fc.id as fee_category_id,
+//          fc.category_name,
+//          s.first_name,
+//          s.last_name,
+//          s.admission_number,
+//          c.class_name
+//        FROM bills b
+//        INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
+//        INNER JOIN fee_categories fc ON bt.fee_category_id = fc.id
+//        INNER JOIN students s ON b.student_id = s.id
+//        INNER JOIN class_assignments ca ON s.id = ca.student_id
+//        INNER JOIN classes c ON ca.class_id = c.id
+//        WHERE ${billConditions.join(" AND ")}
+//        ORDER BY s.first_name, s.last_name, b.due_date ASC`,
+//       billParams
+//     );
+
+//     // ========== STEP 4: Get finalized term bills for these students ==========
+//     let termBillsMap = {};
+//     if (academic_year_id && term_id) {
+//       const [termBills] = await pool.query(
+//         `SELECT 
+//            student_id,
+//            id as term_bill_id,
+//            total_amount,
+//            paid_amount,
+//            remaining_balance,
+//            is_fully_paid,
+//            selected_bills,
+//            compulsory_amount,
+//            optional_amount
+//          FROM student_term_bills
+//          WHERE student_id IN (${placeholders})
+//            AND academic_year_id = ?
+//            AND term_id = ?
+//            AND is_finalized = TRUE`,
+//         [...studentIds, academic_year_id, term_id]
+//       );
+
+//       // Create map for quick lookup
+//       termBillsMap = termBills.reduce((acc, tb) => {
+//         acc[tb.student_id] = tb;
+//         return acc;
+//       }, {});
+//     }
+
+//     // ========== STEP 5: Build response with calculated totals ==========
+//     const responseBills = bills.map(bill => {
+//       const termBill = termBillsMap[bill.student_id];
+//       let finalAmount = parseFloat(bill.amount);
+//       let isSelected = true;
+      
+//       // Check if this bill is in the finalized term bill
+//       if (termBill && termBill.selected_bills) {
+//         let selectedData = termBill.selected_bills;
+//         if (typeof selectedData === "string") {
+//           try {
+//             selectedData = JSON.parse(selectedData);
+//           } catch (e) {
+//             selectedData = { bill_ids: [] };
+//           }
+//         }
+        
+//         const selectedBillIds = selectedData.bill_ids || [];
+//         const editedAmounts = selectedData.edited_amounts || {};
+        
+//         isSelected = selectedBillIds.includes(bill.id);
+        
+//         if (isSelected && editedAmounts[bill.id]) {
+//           finalAmount = parseFloat(editedAmounts[bill.id]);
+//         }
+//       }
+      
+//       return {
+//         ...bill,
+//         finalAmount,
+//         isSelected,
+//         hasCustomAmount: finalAmount !== parseFloat(bill.amount),
+//         originalAmount: parseFloat(bill.amount),
+//         status: bill.payment_status || "Pending",
+//       };
+//     });
+
+//     // Group bills by student for easier frontend consumption
+//     const groupedByStudent = {};
+//     responseBills.forEach(bill => {
+//       if (!groupedByStudent[bill.student_id]) {
+//         groupedByStudent[bill.student_id] = {
+//           student: {
+//             id: bill.student_id,
+//             name: `${bill.first_name} ${bill.last_name}`,
+//             admission_number: bill.admission_number,
+//             class_name: bill.class_name,
+//           },
+//           bills: [],
+//           finalizedBill: termBillsMap[bill.student_id] || null,
+//         };
+//       }
+//       groupedByStudent[bill.student_id].bills.push(bill);
+//     });
+
+//     // Flatten back to array for response
+//     const flatBills = Object.values(groupedByStudent).flatMap(group => 
+//       group.bills.map(bill => ({
+//         ...bill,
+//         student_name: group.student.name,
+//         student_admission: group.student.admission_number,
+//         class_name: group.student.class_name,
+//         has_finalized_bill: !!group.finalizedBill,
+//         finalized_bill_total: group.finalizedBill?.total_amount || null,
+//         finalized_bill_paid: group.finalizedBill?.paid_amount || null,
+//         finalized_bill_balance: group.finalizedBill?.remaining_balance || null,
+//       }))
+//     );
+
+//     // ========== STEP 6: Return paginated response ==========
+//     res.json({
+//       success: true,
+//       bills: flatBills,
+//       pagination: {
+//         page: pageNum,
+//         limit: limitNum,
+//         total: total,
+//         totalPages: totalPages,
+//         hasNextPage: pageNum < totalPages,
+//         hasPrevPage: pageNum > 1,
+//         startIndex: offset + 1,
+//         endIndex: Math.min(offset + limitNum, total),
+//       },
+//       filters: {
+//         class_id: class_id || null,
+//         academic_year_id: academic_year_id || null,
+//         term_id: term_id || null,
+//         status: status || "all",
+//         active_only: active_only === "true",
+//       },
+//       summary: {
+//         students_in_page: paginatedStudents.length,
+//         total_students_with_bills: total,
+//         total_bills_in_page: flatBills.length,
+//       },
+//       timestamp: new Date().toISOString(),
+//     });
+//   } catch (error) {
+//     console.error("Error fetching student bills:", error);
+//     res.status(500).json({ 
+//       error: "Failed to fetch student bills",
+//       details: process.env.NODE_ENV === "development" ? error.message : undefined,
+//     });
+//   }
+// };
+
+// GET /api/getstudentbills - Get student bills with pagination (FIXED FOR DUPLICATES)
 const getStudentBills = async (req, res) => {
   try {
     const {
+      student_id,
       class_id,
       academic_year_id,
       term_id,
@@ -6895,9 +7342,18 @@ const getStudentBills = async (req, res) => {
     const limitNum = parseInt(limit);
     const offset = (pageNum - 1) * limitNum;
 
+    // If specific student is requested, don't paginate
+    const isSpecificStudent = student_id && student_id !== "";
+
     // Build WHERE conditions for students
     let studentWhereConditions = ["1=1"];
     let queryParams = [];
+
+    // Specific student filter (no pagination needed)
+    if (isSpecificStudent) {
+      studentWhereConditions.push("s.id = ?");
+      queryParams.push(student_id);
+    }
 
     // Class filter
     if (class_id && class_id !== "") {
@@ -6917,34 +7373,59 @@ const getStudentBills = async (req, res) => {
     }
 
     // ========== STEP 1: Get total count of UNIQUE students ==========
-    const [countResult] = await pool.query(
-      `SELECT COUNT(DISTINCT s.id) as total
-       FROM students s
-       INNER JOIN class_assignments ca ON s.id = ca.student_id
-       WHERE ${studentWhereConditions.join(" AND ")}`,
-      queryParams
-    );
+    let total = 0;
+    let totalPages = 0;
+    let paginatedStudents = [];
 
-    const total = countResult[0].total;
-    const totalPages = Math.ceil(total / limitNum);
+    if (!isSpecificStudent) {
+      const [countResult] = await pool.query(
+        `SELECT COUNT(DISTINCT s.id) as total
+         FROM students s
+         INNER JOIN class_assignments ca ON s.id = ca.student_id
+         WHERE ${studentWhereConditions.join(" AND ")}`,
+        queryParams
+      );
 
-    // ========== STEP 2: Get paginated students ==========
-    const [paginatedStudents] = await pool.query(
-      `SELECT DISTINCT
-         s.id as student_id,
-         s.first_name,
-         s.last_name,
-         s.admission_number,
-         c.class_name,
-         c.id as class_id
-       FROM students s
-       INNER JOIN class_assignments ca ON s.id = ca.student_id
-       INNER JOIN classes c ON ca.class_id = c.id
-       WHERE ${studentWhereConditions.join(" AND ")}
-       ORDER BY s.first_name, s.last_name
-       LIMIT ? OFFSET ?`,
-      [...queryParams, limitNum, offset]
-    );
+      total = countResult[0].total;
+      totalPages = Math.ceil(total / limitNum);
+
+      // ========== STEP 2: Get paginated students ==========
+      [paginatedStudents] = await pool.query(
+        `SELECT DISTINCT
+           s.id as student_id,
+           s.first_name,
+           s.last_name,
+           s.admission_number,
+           c.class_name,
+           c.id as class_id
+         FROM students s
+         INNER JOIN class_assignments ca ON s.id = ca.student_id
+         INNER JOIN classes c ON ca.class_id = c.id
+         WHERE ${studentWhereConditions.join(" AND ")}
+         ORDER BY s.first_name, s.last_name
+         LIMIT ? OFFSET ?`,
+        [...queryParams, limitNum, offset]
+      );
+    } else {
+      // For specific student, get that student only
+      [paginatedStudents] = await pool.query(
+        `SELECT DISTINCT
+           s.id as student_id,
+           s.first_name,
+           s.last_name,
+           s.admission_number,
+           c.class_name,
+           c.id as class_id
+         FROM students s
+         INNER JOIN class_assignments ca ON s.id = ca.student_id
+         INNER JOIN classes c ON ca.class_id = c.id
+         WHERE ${studentWhereConditions.join(" AND ")}`,
+        queryParams
+      );
+      
+      total = paginatedStudents.length;
+      totalPages = 1;
+    }
 
     // If no students found, return empty result
     if (paginatedStudents.length === 0) {
@@ -6985,8 +7466,9 @@ const getStudentBills = async (req, res) => {
       billParams.push(status);
     }
 
+    // Get unique bills (using DISTINCT to prevent duplicates)
     const [bills] = await pool.query(
-      `SELECT 
+      `SELECT DISTINCT
          b.id,
          b.student_id,
          b.amount,
@@ -7076,51 +7558,60 @@ const getStudentBills = async (req, res) => {
       }
       
       return {
-        ...bill,
-        finalAmount,
-        isSelected,
+        id: bill.id,
+        student_id: bill.student_id,
+        amount: bill.amount,
+        finalAmount: finalAmount,
+        due_date: bill.due_date,
+        bill_status: bill.bill_status,
+        paid_amount: bill.paid_amount,
+        remaining_amount: bill.remaining_amount,
+        payment_status: bill.payment_status,
+        bill_description: bill.bill_description,
+        is_compulsory: bill.is_compulsory,
+        category_name: bill.category_name,
+        first_name: bill.first_name,
+        last_name: bill.last_name,
+        admission_number: bill.admission_number,
+        class_name: bill.class_name,
+        isSelected: isSelected,
         hasCustomAmount: finalAmount !== parseFloat(bill.amount),
         originalAmount: parseFloat(bill.amount),
         status: bill.payment_status || "Pending",
       };
     });
 
-    // Group bills by student for easier frontend consumption
-    const groupedByStudent = {};
-    responseBills.forEach(bill => {
-      if (!groupedByStudent[bill.student_id]) {
-        groupedByStudent[bill.student_id] = {
-          student: {
-            id: bill.student_id,
-            name: `${bill.first_name} ${bill.last_name}`,
-            admission_number: bill.admission_number,
-            class_name: bill.class_name,
-          },
-          bills: [],
-          finalizedBill: termBillsMap[bill.student_id] || null,
-        };
+    // Remove duplicates by bill id (just in case)
+    const uniqueBills = [];
+    const seenBillIds = new Set();
+    
+    for (const bill of responseBills) {
+      if (!seenBillIds.has(bill.id)) {
+        seenBillIds.add(bill.id);
+        uniqueBills.push(bill);
       }
-      groupedByStudent[bill.student_id].bills.push(bill);
-    });
+    }
 
-    // Flatten back to array for response
-    const flatBills = Object.values(groupedByStudent).flatMap(group => 
-      group.bills.map(bill => ({
-        ...bill,
-        student_name: group.student.name,
-        student_admission: group.student.admission_number,
-        class_name: group.student.class_name,
-        has_finalized_bill: !!group.finalizedBill,
-        finalized_bill_total: group.finalizedBill?.total_amount || null,
-        finalized_bill_paid: group.finalizedBill?.paid_amount || null,
-        finalized_bill_balance: group.finalizedBill?.remaining_balance || null,
-      }))
-    );
+    // For specific student request, return all bills without pagination wrapper
+    if (isSpecificStudent) {
+      return res.json({
+        success: true,
+        bills: uniqueBills,
+        student_info: paginatedStudents[0] ? {
+          id: paginatedStudents[0].student_id,
+          name: `${paginatedStudents[0].first_name} ${paginatedStudents[0].last_name}`,
+          admission_number: paginatedStudents[0].admission_number,
+          class_name: paginatedStudents[0].class_name,
+        } : null,
+        has_finalized_bill: !!termBillsMap[student_id],
+        finalized_bill: termBillsMap[student_id] || null,
+      });
+    }
 
     // ========== STEP 6: Return paginated response ==========
     res.json({
       success: true,
-      bills: flatBills,
+      bills: uniqueBills,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -7141,7 +7632,7 @@ const getStudentBills = async (req, res) => {
       summary: {
         students_in_page: paginatedStudents.length,
         total_students_with_bills: total,
-        total_bills_in_page: flatBills.length,
+        total_bills_in_page: uniqueBills.length,
       },
       timestamp: new Date().toISOString(),
     });
@@ -14569,14 +15060,17 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
-// Send balance reminder email
+// Send balance reminder (Email + SMS with proper logging)
 const sendBalanceReminder = async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
+    await connection.beginTransaction();
+
     const { student_id, academic_year_id, term_id } = req.body;
 
     if (!student_id) {
+      await connection.rollback();
       return res.status(400).json({ error: "Student ID is required" });
     }
 
@@ -14614,21 +15108,14 @@ const sendBalanceReminder = async (req, res) => {
 
     const student = students[0];
 
-    // Check if there's an email to send to
-    if (!student.parent_email && !student.student_email) {
-      return res.status(400).json({
-        error:
-          "No email address found for this student. Please add parent email first.",
-        debug: {
-          parent_email: student.parent_email,
-          student_email: student.student_email,
-          parent_contact: student.parent_contact,
-        },
-      });
+    if (!student) {
+      await connection.rollback();
+      return res.status(404).json({ error: "Student not found" });
     }
 
     // Check if there's actually a balance
     if (student.remaining_balance <= 0) {
+      await connection.rollback();
       return res.status(400).json({
         error: "Student has no outstanding balance. No reminder needed.",
       });
@@ -14675,51 +15162,112 @@ const sendBalanceReminder = async (req, res) => {
       };
     }
 
-    // Send the email
-    const emailService = require("../utils/emailServices");
+    // Initialize results
+    let emailResult = { success: false, message: "No email sent", messageId: null };
+    let smsResult = { success: false, message: "No SMS sent", messageId: null };
 
-    const result = await emailService.sendBalanceReminder(
-      student, // This is the student object
-      {
+    // ========== SEND EMAIL ==========
+    if (student.parent_email) {
+      const emailService = require("../utils/emailServices");
+      
+      const balanceData = {
         remaining_balance: student.remaining_balance,
         total_amount: student.total_amount,
         paid_amount: student.paid_amount,
         academic_year: student.academic_year,
         term_name: student.term_name,
-      },
-      schoolSettings,
-    );
-    if (result.success) {
-      // Log the reminder in a table (optional - create a reminder_log table)
-      try {
-        await connection.query(
-          `INSERT INTO email_logs 
-           (student_id, email_type, recipient_email, sent_at, status, message_id) 
-           VALUES (?, 'balance_reminder', ?, NOW(), 'sent', ?)`,
-          [
-            student_id,
-            student.parent_email || student.student_email,
-            result.messageId,
-          ],
-        );
-      } catch (logError) {
-        console.error("Error logging email:", logError);
-        // Don't fail the request if logging fails
-      }
+      };
+      
+      emailResult = await emailService.sendBalanceReminder(
+        student,
+        balanceData,
+        schoolSettings,
+      );
 
-      res.json({
-        success: true,
-        message: `Reminder sent successfully to ${student.parent_name || "parent"}`,
-        recipient: student.parent_email || student.student_email,
-        previewUrl: result.previewUrl,
-      });
+      // Log email
+      await connection.query(
+        `INSERT INTO email_logs 
+         (student_id, email_type, recipient_email, status, message_id, error_message, sent_at) 
+         VALUES (?, 'balance_reminder', ?, ?, ?, ?, NOW())`,
+        [
+          student_id,
+          student.parent_email,
+          emailResult.success ? "sent" : "failed",
+          emailResult.messageId || null,
+          emailResult.success ? null : (emailResult.message || "Unknown error"),
+        ],
+      );
     } else {
-      res.status(500).json({
-        error: "Failed to send reminder email",
-        details: result.error,
-      });
+      emailResult.message = "No email address on file";
     }
+
+    // ========== SEND SMS ==========
+    if (student.parent_contact) {
+      const smsService = require("../utils/smsService");
+      
+      const balanceData = {
+        remaining_balance: student.remaining_balance,
+        total_amount: student.total_amount,
+        paid_amount: student.paid_amount,
+        academic_year: student.academic_year,
+        term_name: student.term_name,
+        due_date: "end of term",
+      };
+      
+      // Format phone number
+      let cleanPhone = student.parent_contact.toString().replace(/\s+/g, '');
+      if (!cleanPhone.startsWith('233')) {
+        cleanPhone = cleanPhone.replace(/^0/, '233');
+      }
+      
+      smsResult = await smsService.sendBalanceReminderSMS(student, balanceData);
+      
+      // Log SMS explicitly (in case smsService doesn't log properly)
+      await connection.query(
+        `INSERT INTO sms_logs 
+         (student_id, phone_number, message, type, status, message_id, error_message, sent_at) 
+         VALUES (?, ?, ?, 'balance_reminder', ?, ?, ?, NOW())`,
+        [
+          student_id,
+          cleanPhone,
+          smsResult.message?.substring(0, 500) || `Balance reminder for ${student.first_name} ${student.last_name}: Ghc ${student.remaining_balance}`,
+          smsResult.success ? "sent" : "failed",
+          smsResult.messageId || null,
+          smsResult.success ? null : (smsResult.error || smsResult.message || "Unknown error"),
+        ],
+      );
+    } else {
+      smsResult.message = "No phone number on file";
+    }
+
+    await connection.commit();
+
+    // Prepare response
+    const response = {
+      success: true,
+      message: `Reminder sent: Email ${emailResult.success ? "✓" : "✗"}, SMS ${smsResult.success ? "✓" : "✗"}`,
+      email: {
+        sent: emailResult.success,
+        recipient: student.parent_email || null,
+        message: emailResult.message,
+        messageId: emailResult.messageId,
+      },
+      sms: {
+        sent: smsResult.success,
+        recipient: student.parent_contact || null,
+        message: smsResult.message,
+        messageId: smsResult.messageId,
+      },
+      student: {
+        id: student.student_id,
+        name: `${student.first_name} ${student.last_name}`,
+        balance: student.remaining_balance,
+      },
+    };
+
+    res.json(response);
   } catch (error) {
+    await connection.rollback();
     console.error("Error sending balance reminder:", error);
     res.status(500).json({
       error: "Failed to send balance reminder",
@@ -14918,7 +15466,9 @@ const getEmailStats = async (req, res) => {
   }
 };
 
-// Send bulk balance reminders to all students with outstanding balances
+
+// Send bulk balance reminders (Email + SMS)
+
 const sendBulkBalanceReminders = async (req, res) => {
   const connection = await pool.getConnection();
 
@@ -15004,6 +15554,7 @@ const sendBulkBalanceReminders = async (req, res) => {
         total_students: 0,
         sent_count: 0,
         failed_count: 0,
+        skipped_count: 0,
         results: [],
       });
     }
@@ -15050,110 +15601,108 @@ const sendBulkBalanceReminders = async (req, res) => {
     }
 
     const emailService = require("../utils/emailServices");
+    const smsService = require("../utils/smsService");
     const results = [];
 
-    // Send emails to all eligible students
+    // Send reminders to all eligible students
     for (const student of students) {
-      // Check if student has email
-      const recipientEmail = student.parent_email || student.student_email;
+      const reminderResult = {
+        student_id: student.student_id,
+        name: `${student.first_name} ${student.last_name}`,
+        email: { sent: false, message: "No email address" },
+        sms: { sent: false, message: "No phone number" },
+      };
 
-      if (!recipientEmail) {
-        results.push({
-          student_id: student.student_id,
-          name: `${student.first_name} ${student.last_name}`,
-          success: false,
-          message: "No email address",
-          skipped: true,
-        });
-        continue;
+      // Check if student has email
+      const recipientEmail = student.parent_email;
+      if (recipientEmail) {
+        try {
+          const emailResult = await emailService.sendBalanceReminder(
+            student,
+            {
+              remaining_balance: student.remaining_balance,
+              total_amount: student.total_amount,
+              paid_amount: student.paid_amount,
+              academic_year: student.academic_year,
+              term_name: student.term_name,
+            },
+            schoolSettings,
+          );
+
+          reminderResult.email.sent = emailResult.success;
+          reminderResult.email.message = emailResult.message || 
+            (emailResult.success ? "Email sent" : "Email failed");
+
+          // Log email
+          await connection.query(
+            `INSERT INTO email_logs 
+             (student_id, email_type, recipient_email, status, message_id, sent_at) 
+             VALUES (?, 'balance_reminder', ?, ?, ?, NOW())`,
+            [
+              student.student_id,
+              recipientEmail,
+              emailResult.success ? "sent" : "failed",
+              emailResult.messageId || null,
+            ],
+          );
+        } catch (error) {
+          reminderResult.email.sent = false;
+          reminderResult.email.message = error.message;
+          
+          await connection.query(
+            `INSERT INTO email_logs 
+             (student_id, email_type, recipient_email, status, error_message, sent_at) 
+             VALUES (?, 'balance_reminder', ?, 'failed', ?, NOW())`,
+            [student.student_id, recipientEmail, error.message],
+          );
+        }
       }
 
-      try {
-        // Send reminder
-        const result = await emailService.sendBalanceReminder(
-          student,
-          {
+      // Check if student has phone number
+      const phoneNumber = student.parent_contact;
+      if (phoneNumber) {
+        try {
+          const balanceData = {
             remaining_balance: student.remaining_balance,
             total_amount: student.total_amount,
             paid_amount: student.paid_amount,
             academic_year: student.academic_year,
             term_name: student.term_name,
-          },
-          schoolSettings,
-        );
-
-        if (result.success) {
-          // Log success
-          await connection.query(
-            `INSERT INTO email_logs 
-             (student_id, email_type, recipient_email, status, message_id, sent_at) 
-             VALUES (?, 'balance_reminder', ?, 'sent', ?, NOW())`,
-            [student.student_id, recipientEmail, result.messageId],
-          );
-
-          results.push({
-            student_id: student.student_id,
-            name: `${student.first_name} ${student.last_name}`,
-            success: true,
-            recipient: recipientEmail,
-            messageId: result.messageId,
-          });
-        } else {
-          // Log failure
-          await connection.query(
-            `INSERT INTO email_logs 
-             (student_id, email_type, recipient_email, status, error_message, sent_at) 
-             VALUES (?, 'balance_reminder', ?, 'failed', ?, NOW())`,
-            [
-              student.student_id,
-              recipientEmail,
-              result.message || "Unknown error",
-            ],
-          );
-
-          results.push({
-            student_id: student.student_id,
-            name: `${student.first_name} ${student.last_name}`,
-            success: false,
-            recipient: recipientEmail,
-            message: result.message,
-          });
+            due_date: "end of term",
+          };
+          
+          const smsResult = await smsService.sendBalanceReminderSMS(student, balanceData);
+          
+          reminderResult.sms.sent = smsResult.success;
+          reminderResult.sms.message = smsResult.message || 
+            (smsResult.success ? "SMS sent" : "SMS failed");
+          
+          // Note: SMS logging is handled inside sendSMS function
+        } catch (error) {
+          reminderResult.sms.sent = false;
+          reminderResult.sms.message = error.message;
         }
-      } catch (error) {
-        // Log exception
-        await connection.query(
-          `INSERT INTO email_logs 
-           (student_id, email_type, recipient_email, status, error_message, sent_at) 
-           VALUES (?, 'balance_reminder', ?, 'failed', ?, NOW())`,
-          [student.student_id, recipientEmail, error.message],
-        );
-
-        results.push({
-          student_id: student.student_id,
-          name: `${student.first_name} ${student.last_name}`,
-          success: false,
-          recipient: recipientEmail,
-          message: error.message,
-          error: true,
-        });
       }
 
-      // Small delay to avoid overwhelming email server
+      results.push(reminderResult);
+
+      // Small delay to avoid overwhelming the services
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     // Calculate summary
-    const sentCount = results.filter((r) => r.success).length;
-    const failedCount = results.filter((r) => !r.success && !r.skipped).length;
-    const skippedCount = results.filter((r) => r.skipped).length;
+    const sentCount = results.filter(r => r.email.sent || r.sms.sent).length;
+    const emailSentCount = results.filter(r => r.email.sent).length;
+    const smsSentCount = results.filter(r => r.sms.sent).length;
+    const failedCount = results.filter(r => !r.email.sent && !r.sms.sent).length;
 
     res.json({
       success: true,
-      message: `Bulk reminders processed: ${sentCount} sent, ${failedCount} failed, ${skippedCount} skipped`,
+      message: `Bulk reminders processed: Email sent to ${emailSentCount}, SMS sent to ${smsSentCount}`,
       total_students: students.length,
-      sent_count: sentCount,
+      email_sent: emailSentCount,
+      sms_sent: smsSentCount,
       failed_count: failedCount,
-      skipped_count: skippedCount,
       results: results,
       summary: {
         academic_year: students[0]?.academic_year || "Current",
@@ -15172,6 +15721,451 @@ const sendBulkBalanceReminders = async (req, res) => {
     });
   } finally {
     connection.release();
+  }
+};
+
+// GET /api/sms-logs - Get SMS logs with pagination
+const getSmsLogs = async (req, res) => {
+  try {
+    const {
+      type,
+      status,
+      start_date,
+      end_date,
+      student_id,
+      page = 1,
+      limit = 50,
+    } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    let whereConditions = ["1=1"];
+    let queryParams = [];
+
+    if (type) {
+      whereConditions.push("sl.type = ?");
+      queryParams.push(type);
+    }
+
+    if (status) {
+      whereConditions.push("sl.status = ?");
+      queryParams.push(status);
+    }
+
+    if (start_date && end_date) {
+      whereConditions.push("DATE(sl.sent_at) BETWEEN ? AND ?");
+      queryParams.push(start_date, end_date);
+    } else if (start_date) {
+      whereConditions.push("DATE(sl.sent_at) >= ?");
+      queryParams.push(start_date);
+    } else if (end_date) {
+      whereConditions.push("DATE(sl.sent_at) <= ?");
+      queryParams.push(end_date);
+    }
+
+    if (student_id) {
+      whereConditions.push("sl.student_id = ?");
+      queryParams.push(student_id);
+    }
+
+    // Get total count
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM sms_logs sl WHERE ${whereConditions.join(" AND ")}`,
+      queryParams
+    );
+
+    const total = countResult[0].total;
+    const totalPages = Math.ceil(total / limitNum);
+
+    // Get paginated logs
+    const [logs] = await pool.query(
+      `SELECT 
+         sl.*,
+         CONCAT(s.first_name, ' ', s.last_name) as student_name,
+         s.admission_number
+       FROM sms_logs sl
+       LEFT JOIN students s ON sl.student_id = s.id
+       WHERE ${whereConditions.join(" AND ")}
+       ORDER BY sl.sent_at DESC
+       LIMIT ? OFFSET ?`,
+      [...queryParams, limitNum, offset]
+    );
+
+    res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching SMS logs:", error);
+    res.status(500).json({ error: "Failed to fetch SMS logs" });
+  }
+};
+
+// GET /api/sms-stats - Get SMS statistics
+const getSmsStats = async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    let dateCondition = "1=1";
+    let params = [];
+
+    if (start_date && end_date) {
+      dateCondition = "DATE(sent_at) BETWEEN ? AND ?";
+      params.push(start_date, end_date);
+    } else if (start_date) {
+      dateCondition = "DATE(sent_at) >= ?";
+      params.push(start_date);
+    } else if (end_date) {
+      dateCondition = "DATE(sent_at) <= ?";
+      params.push(end_date);
+    }
+
+    // Overall stats
+    const [overallStats] = await pool.query(
+      `SELECT 
+         COUNT(*) as total_sms,
+         SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as delivered,
+         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+         COUNT(DISTINCT student_id) as unique_students
+       FROM sms_logs
+       WHERE ${dateCondition}`,
+      params
+    );
+
+    // Breakdown by SMS type
+    const [typeBreakdown] = await pool.query(
+      `SELECT 
+         type,
+         COUNT(*) as sent_count,
+         SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent_count,
+         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count
+       FROM sms_logs
+       WHERE ${dateCondition}
+       GROUP BY type
+       ORDER BY sent_count DESC`,
+      params
+    );
+
+    // Daily activity
+    const [dailyActivity] = await pool.query(
+      `SELECT 
+         DATE(sent_at) as date,
+         COUNT(*) as total,
+         SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+       FROM sms_logs
+       WHERE ${dateCondition}
+       GROUP BY DATE(sent_at)
+       ORDER BY date DESC
+       LIMIT 30`,
+      params
+    );
+
+    res.json({
+      success: true,
+      data: {
+        overview: overallStats[0] || {
+          total_sms: 0,
+          delivered: 0,
+          failed: 0,
+          unique_students: 0,
+        },
+        by_type: typeBreakdown,
+        daily: dailyActivity,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching SMS stats:", error);
+    res.status(500).json({ error: "Failed to fetch SMS statistics" });
+  }
+};
+
+// GET /api/assessment/class-performance - Get class performance assessment
+// GET /api/assessment/class-performance - Get class performance assessment
+const getClassPerformanceAssessment = async (req, res) => {
+  try {
+    const { class_id, academic_year_id, term_id } = req.query;
+
+    if (!class_id || !academic_year_id || !term_id) {
+      return res.status(400).json({ 
+        error: "Class ID, Academic Year ID, and Term ID are required" 
+      });
+    }
+
+    // Get class info
+    const [classInfo] = await pool.query(
+      "SELECT class_name FROM classes WHERE id = ?",
+      [class_id]
+    );
+
+    // Get all students in the class
+    const [students] = await pool.query(
+      `SELECT 
+         s.id as student_id,
+         s.first_name,
+         s.last_name,
+         s.admission_number
+       FROM students s
+       INNER JOIN class_assignments ca ON s.id = ca.student_id
+       WHERE ca.class_id = ? 
+         AND ca.academic_year_id = ?
+         AND (s.is_active IS NULL OR s.is_active = TRUE)
+       ORDER BY s.first_name, s.last_name`,
+      [class_id, academic_year_id]
+    );
+
+    if (students.length === 0) {
+      return res.json({
+        class_name: classInfo[0]?.class_name || "Unknown",
+        academic_year: academic_year_id,
+        term: term_id,
+        students: [],
+        subjects: [],
+        class_summary: {
+          total_students: 0,
+          class_average: 0,
+          highest_score: 0,
+          lowest_score: 0,
+          top_student: "",
+          pass_rate: 0,
+          passed_students: 0,
+        },
+        grade_distribution: [],
+      });
+    }
+
+    const studentIds = students.map(s => s.student_id);
+    const placeholders = studentIds.map(() => "?").join(",");
+
+    // Get all subjects for this class
+    const [subjects] = await pool.query(
+      `SELECT DISTINCT 
+         s.id as subject_id,
+         s.subject_name,
+         s.subject_code
+       FROM subjects s
+       INNER JOIN subject_assignments sa ON s.id = sa.subject_id
+       WHERE sa.class_id = ? 
+         AND sa.academic_year_id = ?`,
+      [class_id, academic_year_id]
+    );
+
+    // Get grades for all students - REMOVED g.grade column
+    const [grades] = await pool.query(
+      `SELECT 
+         g.student_id,
+         g.subject_id,
+         g.subject_total as score
+       FROM grades g
+       WHERE g.student_id IN (${placeholders})
+         AND g.academic_year_id = ?
+         AND g.term_id = ?
+         AND g.subject_total IS NOT NULL`,
+      [...studentIds, academic_year_id, term_id]
+    );
+
+    // Helper function to calculate grade from score
+    const calculateGrade = (score) => {
+      if (score >= 80) return "A";
+      if (score >= 70) return "B";
+      if (score >= 60) return "C";
+      if (score >= 50) return "D";
+      if (score >= 40) return "E";
+      return "F";
+    };
+
+    // Calculate student averages
+    const studentAverages = {};
+    const studentGrades = {};
+
+    for (const student of students) {
+      const studentGradesList = grades.filter(g => g.student_id === student.student_id);
+      
+      if (studentGradesList.length > 0) {
+        const totalScore = studentGradesList.reduce((sum, g) => sum + parseFloat(g.score), 0);
+        const averageScore = totalScore / studentGradesList.length;
+        studentAverages[student.student_id] = averageScore;
+        studentGrades[student.student_id] = calculateGrade(averageScore);
+      } else {
+        studentAverages[student.student_id] = 0;
+        studentGrades[student.student_id] = "N/A";
+      }
+    }
+
+    // Sort students by average score
+    const sortedStudents = [...students].sort((a, b) => 
+      studentAverages[b.student_id] - studentAverages[a.student_id]
+    );
+
+    // Calculate class summary
+    const validAverages = Object.values(studentAverages).filter(avg => avg > 0);
+    const classAverage = validAverages.length > 0 
+      ? validAverages.reduce((sum, avg) => sum + avg, 0) / validAverages.length 
+      : 0;
+    
+    const highestScore = Math.max(...validAverages, 0);
+    const lowestScore = Math.min(...validAverages, 0);
+    const topStudentId = Object.keys(studentAverages).find(
+      id => studentAverages[id] === highestScore
+    );
+    const topStudent = students.find(s => s.student_id === parseInt(topStudentId));
+    
+    const passedStudents = validAverages.filter(avg => avg >= 50).length;
+    const passRate = validAverages.length > 0 ? (passedStudents / validAverages.length) * 100 : 0;
+
+    // Calculate grade distribution
+    const gradeCounts = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
+    Object.values(studentGrades).forEach(grade => {
+      if (gradeCounts[grade] !== undefined) gradeCounts[grade]++;
+    });
+
+    const gradeDistribution = Object.entries(gradeCounts).map(([grade, count]) => ({
+      grade,
+      count,
+      percentage: students.length > 0 ? (count / students.length) * 100 : 0,
+    }));
+
+    // Calculate subject-wise performance
+    const subjectPerformance = [];
+    
+    for (const subject of subjects) {
+      const subjectGrades = grades.filter(g => g.subject_id === subject.subject_id);
+      
+      if (subjectGrades.length > 0) {
+        const scores = subjectGrades.map(g => parseFloat(g.score));
+        const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+        const highest = Math.max(...scores);
+        const lowest = Math.min(...scores);
+        const passed = scores.filter(s => s >= 50).length;
+        const passRateSubject = (passed / scores.length) * 100;
+        
+        // Get top performers
+        const topPerformers = [...subjectGrades]
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+          .map(g => {
+            const student = students.find(s => s.student_id === g.student_id);
+            return {
+              student_id: g.student_id,
+              student_name: student ? `${student.first_name} ${student.last_name}` : "Unknown",
+              score: parseFloat(g.score),
+            };
+          });
+        
+        // Get lowest performers
+        const lowestPerformers = [...subjectGrades]
+          .sort((a, b) => a.score - b.score)
+          .slice(0, 3)
+          .map(g => {
+            const student = students.find(s => s.student_id === g.student_id);
+            return {
+              student_id: g.student_id,
+              student_name: student ? `${student.first_name} ${student.last_name}` : "Unknown",
+              score: parseFloat(g.score),
+            };
+          });
+        
+        // Calculate grade distribution for subject
+        const subjectGradeCounts = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
+        subjectGrades.forEach(g => {
+          const grade = calculateGrade(parseFloat(g.score));
+          if (subjectGradeCounts[grade] !== undefined) subjectGradeCounts[grade]++;
+        });
+        
+        const distribution = {
+          A: (subjectGradeCounts.A / subjectGrades.length) * 100,
+          B: (subjectGradeCounts.B / subjectGrades.length) * 100,
+          C: (subjectGradeCounts.C / subjectGrades.length) * 100,
+          D: (subjectGradeCounts.D / subjectGrades.length) * 100,
+          E: (subjectGradeCounts.E / subjectGrades.length) * 100,
+          F: (subjectGradeCounts.F / subjectGrades.length) * 100,
+        };
+        
+        subjectPerformance.push({
+          subject_id: subject.subject_id,
+          subject_name: subject.subject_name,
+          subject_code: subject.subject_code,
+          class_average: average,
+          highest_score: highest,
+          lowest_score: lowest,
+          pass_rate: passRateSubject,
+          top_performers: topPerformers,
+          lowest_performers: lowestPerformers,
+          distribution: distribution,
+        });
+      } else {
+        subjectPerformance.push({
+          subject_id: subject.subject_id,
+          subject_name: subject.subject_name,
+          subject_code: subject.subject_code,
+          class_average: 0,
+          highest_score: 0,
+          lowest_score: 0,
+          pass_rate: 0,
+          top_performers: [],
+          lowest_performers: [],
+          distribution: { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 },
+        });
+      }
+    }
+
+    // Prepare student performance data
+    const studentPerformance = sortedStudents.map((student, index) => {
+      const studentGradeList = grades.filter(g => g.student_id === student.student_id);
+      const subjectsPassed = studentGradeList.filter(g => parseFloat(g.score) >= 50).length;
+      const averageScore = studentAverages[student.student_id] || 0;
+      
+      // Simple trend (you can enhance this with previous term data)
+      let performanceTrend = "stable";
+      if (index < sortedStudents.length * 0.3) performanceTrend = "up";
+      else if (index > sortedStudents.length * 0.7) performanceTrend = "down";
+      
+      return {
+        student_id: student.student_id,
+        student_name: `${student.first_name} ${student.last_name}`,
+        admission_number: student.admission_number,
+        average_score: averageScore,
+        grade: studentGrades[student.student_id] || "N/A",
+        subjects_passed: subjectsPassed,
+        total_subjects: subjects.length,
+        performance_trend: performanceTrend,
+      };
+    });
+
+    res.json({
+      class_name: classInfo[0]?.class_name || "Unknown",
+      academic_year: academic_year_id,
+      term: term_id,
+      total_students: students.length,
+      students: studentPerformance,
+      subjects: subjectPerformance,
+      class_summary: {
+        total_students: students.length,
+        class_average: classAverage,
+        highest_score: highestScore,
+        lowest_score: lowestScore,
+        top_student: topStudent ? `${topStudent.first_name} ${topStudent.last_name}` : "",
+        pass_rate: passRate,
+        passed_students: passedStudents,
+      },
+      grade_distribution: gradeDistribution,
+    });
+  } catch (error) {
+    console.error("Error getting class performance assessment:", error);
+    res.status(500).json({ 
+      error: "Failed to get assessment data",
+      details: error.message 
+    });
   }
 };
 
@@ -15349,5 +16343,11 @@ module.exports = {
 
   getEmailLogs,
   getEmailStats,
-  exportPVHeaders
+
+  getSmsLogs,
+  getSmsStats,
+
+  exportPVHeaders,
+
+  getClassPerformanceAssessment
 };

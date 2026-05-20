@@ -519,7 +519,7 @@ const ViewReportCard = () => {
                     placeholder="Teacher's remarks..."
                   />
                 </div>
-                <div>
+                {/* <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Overall Comment
                   </label>
@@ -535,7 +535,7 @@ const ViewReportCard = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Overall performance comment..."
                   />
-                </div>
+                </div> */}
 
                 {/* <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -567,7 +567,7 @@ const ViewReportCard = () => {
                     </p>
                   </div>
                 )}
-                {reportCard.overall_comment && (
+                {/* {reportCard.overall_comment && (
                   <div>
                     <h4 className="font-medium text-gray-700 mb-1">
                       Overall Comment:
@@ -576,18 +576,8 @@ const ViewReportCard = () => {
                       {reportCard.overall_comment}
                     </p>
                   </div>
-                )}
-
-                {/* {reportCard.principal_comment && (
-                  <div>
-                    <h4 className="font-medium text-gray-700 mb-1">
-                      Principal's Comment:
-                    </h4>
-                    <p className="text-gray-900 bg-white p-3 rounded border">
-                      {reportCard.principal_comment}
-                    </p>
-                  </div>
                 )} */}
+
 
                 {!reportCard.overall_comment && !reportCard.teacher_comment && (
                   <p className="text-gray-500 italic">No comments added yet.</p>

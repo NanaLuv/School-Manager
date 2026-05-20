@@ -171,6 +171,12 @@ const Sidebar = () => {
           path: "/academics/report-cards/generate",
           roles: ["admin"],
         },
+        {
+          name: "Assessment",
+          icon: BookOpenIcon,
+          path: "/academics/assessment",
+          roles: ["admin", "teacher"],
+        },
       ],
       roles: ["admin", "teacher", "student"],
     },
@@ -283,7 +289,7 @@ const Sidebar = () => {
       roles: ["admin"],
     },
     {
-      name: "Email Logs",
+      name: "Msg Logs",
       icon: EnvelopeIcon,
       path: "/email-logs",
       roles: ["admin", "accountant"],

@@ -88,55 +88,35 @@ const getSMSTemplates = async () => {
   };
 };
 
-// Send SMS with logging - FIXED SQL
+// Send SMS without logging (logging moved to controllers)
 const sendSMS = async (studentId, phoneNumber, message, type = "general") => {
   try {
     if (!phoneNumber) {
-      return { success: false, error: "No phone number provided" };
+      return {
+        success: false,
+        error: "No phone number provided",
+        message: null,
+      };
     }
 
     // Send via Arkesel
     const result = await arkesel.sendSMS(phoneNumber, message);
 
-    // Log to database
-    await pool.query(
-      `INSERT INTO sms_logs 
-       (student_id, phone_number, message, type, status, message_id, error_message, sent_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        studentId,
-        phoneNumber,
-        message.substring(0, 500),
-        type,
-        result.success ? "sent" : "failed",
-        result.messageId || null,
-        result.error || null,
-      ],
-    );
-
-    return result;
+    // Return result without database logging
+    return {
+      success: result.success,
+      message: result.success ? "SMS sent successfully" : result.error,
+      messageId: result.messageId || null,
+      error: result.error || null,
+    };
   } catch (error) {
     console.error("SMS service error:", error);
-
-    // Log failure - FIXED SQL
-    try {
-      await pool.query(
-        `INSERT INTO sms_logs 
-         (student_id, phone_number, message, type, status, error_message, sent_at) 
-         VALUES (?, ?, ?, ?, 'failed', ?, NOW())`,
-        [
-          studentId,
-          phoneNumber,
-          message.substring(0, 500),
-          type,
-          error.message || "Unknown error",
-        ],
-      );
-    } catch (logError) {
-      console.error("Failed to log SMS error:", logError);
-    }
-
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: error.message,
+      message: null,
+      messageId: null,
+    };
   }
 };
 
@@ -162,12 +142,20 @@ const sendBalanceReminderSMS = async (student, balance) => {
     message = templates.shortBalanceReminder(student, balance);
   }
 
-  return await sendSMS(
+  const result = await sendSMS(
     student.id,
     student.parent_contact,
     message,
     "balance_reminder",
   );
+
+  // Return consistent structure
+  return {
+    success: result.success,
+    message: result.success ? "SMS sent successfully" : result.error,
+    messageId: result.messageId || null,
+    error: result.error || null,
+  };
 };
 
 module.exports = {

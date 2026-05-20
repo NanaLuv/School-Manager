@@ -46,7 +46,6 @@ const StudentBillSelection = () => {
 
   useEffect(() => {
     if (studentId) {
-
       // Get academic context from navigation state or URL params
       const passedAcademicContext = location.state?.academicContext;
 
@@ -115,29 +114,24 @@ const StudentBillSelection = () => {
   const fetchStudentBalances = async () => {
     try {
       const [arrearsRes, overpaymentsRes] = await Promise.all([
-        api.get(
-          `/getstudentarrears/${studentId}`
-        ),
-        api.get(
-          `/getstudentoverpayments/${studentId}`
-        ),
+        api.get(`/getstudentarrears/${studentId}`),
+        api.get(`/getstudentoverpayments/${studentId}`),
       ]);
 
       setStudentArrears(arrearsRes.data);
       setStudentOverpayments(
-        overpaymentsRes.data.filter((op) => op.status === "Active")
+        overpaymentsRes.data.filter((op) => op.status === "Active"),
       );
     } catch (error) {
       console.error("Error fetching student balances:", error);
     }
   };
 
-  
   // Update fetchStudentBills function to use the context properly:
+
   const fetchStudentBills = async (academicContext = null) => {
     setLoading(true);
     try {
-      // Use the provided academic context or fallback
       let context = academicContext;
 
       if (!context) {
@@ -145,42 +139,40 @@ const StudentBillSelection = () => {
         setAcademicContext(context);
       }
 
-
       if (!context.academic_year_id || !context.term_id) {
         alert("Please select academic year and term first");
         return;
       }
 
+      // Use the student_id parameter for specific student
       const response = await api.get(
-        `/getstudentbills?student_id=${studentId}&academic_year_id=${context.academic_year_id}&term_id=${context.term_id}`
+        `/getstudentbills?student_id=${studentId}&academic_year_id=${context.academic_year_id}&term_id=${context.term_id}`,
       );
-
       const bills = response.data?.bills || [];
 
       if (bills.length > 0) {
-        const studentData = {
+        // Get student info from response
+        const studentInfoData = response.data.student_info || {
           name: `${bills[0].first_name} ${bills[0].last_name}`,
           admission_number: bills[0].admission_number,
           class_name: bills[0].class_name,
-          academic_year_id: context.academic_year_id,
-          term_id: context.term_id,
         };
 
-        setStudentInfo(studentData);
+        setStudentInfo({
+          ...studentInfoData,
+          academic_year_id: context.academic_year_id,
+          term_id: context.term_id,
+        });
+
         setStudentBills(bills);
 
         // Auto-select all bills initially if not finalized
         const allBillIds = bills.map((bill) => bill.id);
         setSelectedBills(allBillIds);
       } else {
-        const studentData = {
-          studentId,
-          academic_year_id: context.academic_year_id,
-          term_id: context.term_id,
-        };
-
-        // Try to get student info from another source
+        // No bills found - try to get student info from other source
         await fetchStudentInfoFromOtherSource();
+        setStudentBills([]);
       }
     } catch (error) {
       console.error("Error fetching student bills:", error);
@@ -192,9 +184,7 @@ const StudentBillSelection = () => {
   // Helper function to get student info
   const fetchStudentInfoFromOtherSource = async () => {
     try {
-      const response = await api.get(
-        `/getstudents?student_id=${studentId}`
-      );
+      const response = await api.get(`/getstudents?student_id=${studentId}`);
 
       if (response.data && response.data.length > 0) {
         const student = response.data[0];
@@ -244,7 +234,7 @@ const StudentBillSelection = () => {
       }
 
       const response = await api.get(
-        `/get-available-bills?student_id=${studentId}&academic_year_id=${academicContext.academic_year_id}&term_id=${academicContext.term_id}`
+        `/get-available-bills?student_id=${studentId}&academic_year_id=${academicContext.academic_year_id}&term_id=${academicContext.term_id}`,
       );
 
       setEditedNewBillAmounts({});
@@ -270,7 +260,7 @@ const StudentBillSelection = () => {
       ? editedNewBillAmounts[bill.id]
       : parseFloat(bill.amount);
   };
-  
+
   // Update the handleAddNewBills function
   const handleAddNewBills = async () => {
     if (selectedNewBills.length === 0) {
@@ -295,19 +285,14 @@ const StudentBillSelection = () => {
         }
       });
 
-    
-
-      const response = await api.post(
-        "/add-bills-to-finalized",
-        {
-          student_id: studentId,
-          academic_year_id: studentInfo.academic_year_id,
-          term_id: studentInfo.term_id,
-          new_bill_ids: newBillIds,
-          edited_amounts: editedAmountsPayload, // Make sure this is sent
-          created_by: 1,
-        }
-      );
+      const response = await api.post("/add-bills-to-finalized", {
+        student_id: studentId,
+        academic_year_id: studentInfo.academic_year_id,
+        term_id: studentInfo.term_id,
+        new_bill_ids: newBillIds,
+        edited_amounts: editedAmountsPayload, // Make sure this is sent
+        created_by: 1,
+      });
 
       if (response.data.success) {
         // Update local state with the response data
@@ -318,7 +303,7 @@ const StudentBillSelection = () => {
 
         // Update totals display
         alert(
-          `Added ${response.data.added_bills_count} bills. Amount added: Ghc ${response.data.amount_added}`
+          `Added ${response.data.added_bills_count} bills. Amount added: Ghc ${response.data.amount_added}`,
         );
 
         // Clear the modal state
@@ -348,9 +333,8 @@ const StudentBillSelection = () => {
         return;
       }
 
-
       const response = await api.get(
-        `/getstudenttermbill/${studentId}?academic_year_id=${context.academic_year_id}&term_id=${context.term_id}`
+        `/getstudenttermbill/${studentId}?academic_year_id=${context.academic_year_id}&term_id=${context.term_id}`,
       );
 
       if (response.data) {
@@ -374,7 +358,6 @@ const StudentBillSelection = () => {
 
         // CRITICAL: Check if there are actual payments
         const hasActualPayments = response.data.paid_amount > 0;
-        
 
         if (hasActualPayments !== hasPayments) {
           setHasPayments(hasActualPayments);
@@ -400,9 +383,8 @@ const StudentBillSelection = () => {
         return;
       }
 
-
       const paymentsResponse = await api.get(
-        `/checkstudentpayments/${studentId}?academic_year_id=${context.academic_year_id}&term_id=${context.term_id}`
+        `/checkstudentpayments/${studentId}?academic_year_id=${context.academic_year_id}&term_id=${context.term_id}`,
       );
 
       // CRITICAL FIX: hasPayments should be true ONLY if there are payments for THIS SPECIFIC TERM
@@ -503,8 +485,7 @@ const StudentBillSelection = () => {
   // };
 
   // Update calculateTotals to handle overpayments
- 
- 
+
   const calculateTotals = () => {
     const selectedBillObjects = studentBills
       .filter((bill) => selectedBills.includes(bill.id))
@@ -530,13 +511,13 @@ const StudentBillSelection = () => {
     // Calculate arrears total
     const arrearsTotal = studentArrears.reduce(
       (sum, arrear) => sum + parseFloat(arrear.amount || 0),
-      0
+      0,
     );
 
     // Calculate overpayments total
     const overpaymentsTotal = studentOverpayments.reduce(
       (sum, op) => sum + parseFloat(op.amount || 0),
-      0
+      0,
     );
 
     const totalAmount = currentTermTotal + arrearsTotal - overpaymentsTotal;
@@ -566,7 +547,7 @@ const StudentBillSelection = () => {
     // Check for compulsory bill modifications
     const compulsoryBills = getCompulsoryBills();
     const selectedCompulsoryBills = compulsoryBills.filter((bill) =>
-      selectedBills.includes(bill.id)
+      selectedBills.includes(bill.id),
     );
 
     // Check if any compulsory bills have been deselected
@@ -598,7 +579,7 @@ const StudentBillSelection = () => {
 
   const performSave = async () => {
     setSaving(true);
-    
+
     try {
       const totals = calculateTotals();
 
@@ -610,28 +591,25 @@ const StudentBillSelection = () => {
       if (compulsoryBills.length > 0) {
         // Use Tuition Fee if exists, otherwise first compulsory
         const tuitionBill = compulsoryBills.find((bill) =>
-          bill.category_name?.toLowerCase().includes("tuition")
+          bill.category_name?.toLowerCase().includes("tuition"),
         );
         arrearsBillId = tuitionBill?.id || compulsoryBills[0].id;
         overpaymentsBillId = arrearsBillId; // Same bill for simplicity
       }
 
-      const response = await api.post(
-        "/savestudenttermbill",
-        {
-          student_id: studentId,
-          academic_year_id: studentInfo.academic_year_id,
-          term_id: studentInfo.term_id,
-          total_amount: totals.totalAmount,
-          compulsory_amount: totals.compulsoryTotal,
-          optional_amount: totals.optionalTotal,
-          selected_bills: selectedBills,
-          edited_amounts: editedAmounts,
-          created_by: 1,
-          arrears_bill_id: arrearsBillId, // NEW
-          apply_overpayments_to_bill_id: overpaymentsBillId, // NEW
-        }
-      );
+      const response = await api.post("/savestudenttermbill", {
+        student_id: studentId,
+        academic_year_id: studentInfo.academic_year_id,
+        term_id: studentInfo.term_id,
+        total_amount: totals.totalAmount,
+        compulsory_amount: totals.compulsoryTotal,
+        optional_amount: totals.optionalTotal,
+        selected_bills: selectedBills,
+        edited_amounts: editedAmounts,
+        created_by: 1,
+        arrears_bill_id: arrearsBillId, // NEW
+        apply_overpayments_to_bill_id: overpaymentsBillId, // NEW
+      });
 
       if (response.data.finalized) {
         setIsFinalized(true);
@@ -659,7 +637,7 @@ const StudentBillSelection = () => {
   const proceedToPayment = () => {
     if (!isFinalized) {
       alert(
-        "Please save the finalized bill first before proceeding to payment"
+        "Please save the finalized bill first before proceeding to payment",
       );
       return;
     }
@@ -687,8 +665,6 @@ const StudentBillSelection = () => {
       },
     });
   };
-
-
 
   const getCompulsoryBills = () => {
     return studentBills.filter((bill) => bill.is_compulsory);
@@ -771,7 +747,7 @@ const StudentBillSelection = () => {
                   } else {
                     // Show helpful message
                     alert(
-                      "No additional optional bills available to add. All optional bills for this term may already be included in the finalized bill."
+                      "No additional optional bills available to add. All optional bills for this term may already be included in the finalized bill.",
                     );
                   }
                 }}
@@ -817,7 +793,7 @@ const StudentBillSelection = () => {
                     {Number(
                       finalizedBill?.remaining_balance ??
                         finalizedBill?.total_amount ??
-                        0
+                        0,
                     ).toFixed(2)}
                   </span>
                 </div>
@@ -1514,10 +1490,10 @@ const StudentBillSelection = () => {
 
               {/* Show modified amounts summary */}
               {(compulsoryBills.some(
-                (bill) => editedAmounts[bill.id] !== undefined
+                (bill) => editedAmounts[bill.id] !== undefined,
               ) ||
                 optionalBills.some(
-                  (bill) => editedAmounts[bill.id] !== undefined
+                  (bill) => editedAmounts[bill.id] !== undefined,
                 )) && (
                 <div className="mt-3 p-2 bg-purple-50 border border-purple-200 rounded text-xs text-purple-700">
                   <div className="font-medium">Custom Amounts Applied:</div>
@@ -1569,13 +1545,13 @@ const StudentBillSelection = () => {
                     className="w-full bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-semibold flex items-center justify-center space-x-2"
                   >
                     <DocumentCheckIcon className="w-5 h-5" />
-                  
+
                     <span>
                       {saving
                         ? "Saving..."
                         : isFinalized
-                        ? "Update Bill"
-                        : "Finalize Bill for Payment"}
+                          ? "Update Bill"
+                          : "Finalize Bill for Payment"}
                     </span>
                   </button>
 
@@ -1597,11 +1573,11 @@ const StudentBillSelection = () => {
                       {!isFinalized
                         ? "Finalize Bill First"
                         : finalizedBill?.remaining_balance <= 0 &&
-                          finalizedBill?.paid_amount > 0
-                        ? "Fully Paid - No Payment Required"
-                        : `Proceed to Payment - Ghc ${
-                            finalizedBill?.remaining_balance || "0.00"
-                          } Due`}
+                            finalizedBill?.paid_amount > 0
+                          ? "Fully Paid - No Payment Required"
+                          : `Proceed to Payment - Ghc ${
+                              finalizedBill?.remaining_balance || "0.00"
+                            } Due`}
                     </span>
                   </button>
                   {isFinalized && (
@@ -1616,12 +1592,12 @@ const StudentBillSelection = () => {
                         >
                           {finalizedBill.remaining_balance > 0
                             ? `Partially Paid: Ghc ${finalizedBill.paid_amount.toFixed(
-                                2
+                                2,
                               )} received, Ghc ${finalizedBill.remaining_balance.toFixed(
-                                2
+                                2,
                               )} remaining`
                             : `Fully Paid: Ghc ${finalizedBill.paid_amount.toFixed(
-                                2
+                                2,
                               )} received`}
                         </div>
                       )}
@@ -1629,7 +1605,7 @@ const StudentBillSelection = () => {
                         <div className="text-gray-500">
                           Last payment:{" "}
                           {new Date(
-                            finalizedBill.last_payment_date
+                            finalizedBill.last_payment_date,
                           ).toLocaleDateString()}
                         </div>
                       )}
@@ -1710,7 +1686,7 @@ const StudentBillSelection = () => {
                                   ]);
                                 } else {
                                   setSelectedNewBills((prev) =>
-                                    prev.filter((id) => id !== bill.id)
+                                    prev.filter((id) => id !== bill.id),
                                   );
                                   // Clear edited amount if deselected
                                   setEditedNewBillAmounts((prev) => {
@@ -1747,7 +1723,7 @@ const StudentBillSelection = () => {
                                       onChange={(e) =>
                                         handleNewBillAmountEdit(
                                           bill.id,
-                                          e.target.value
+                                          e.target.value,
                                         )
                                       }
                                       className="w-32 px-3 py-1 border border-purple-300 rounded text-right focus:outline-none focus:ring-2 focus:ring-purple-500"

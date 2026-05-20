@@ -11,14 +11,15 @@ const app = express();
 // cors configuration to allow requests from the frontend URL
 
 app.use(
-  cors({
-    origin:
-      "https://school-manager-rhab.vercel.app" ||
-      "school-manager-rhab-git-main-nana-loves-projects.vercel.app" ||
-      "school-manager-rhab-6t2mgp4tt-nana-loves-projects.vercel.app",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }),
+  cors(),
+  // cors({
+  //   origin:
+  //     "https://school-manager-rhab.vercel.app" ||
+  //     "school-manager-rhab-git-main-nana-loves-projects.vercel.app" ||
+  //     "school-manager-rhab-6t2mgp4tt-nana-loves-projects.vercel.app",
+  //   methods: ["GET", "POST", "PUT", "DELETE"],
+  //   allowedHeaders: ["Content-Type", "Authorization"],
+  // }),
 );
 app.get("/test", (req, res) => {
   res.json({ message: "CORS working" });

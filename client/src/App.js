@@ -45,6 +45,7 @@ import PayrollDashboard from "./pages/payroll/PayrollDashboard";
 import ProfitLoss from "./pages/profit and loss/ProfitLoss";
 import UserActivityLogs from "./pages/user activity logs/userActivityLogs";
 import EmailLogs from "./pages/emaillogs/EmailLogs";
+import AssessmentDashboard from "./pages/continuous assessment/AssessmentDashboard";
 
 function App() {
   return (
@@ -307,6 +308,17 @@ const ProtectedAppRoutes = () => {
           <ProtectedRoute requiredRoles={["admin", "teacher"]}>
             <Layout>
               <AttendanceReports />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/academics/assessment"
+        element={
+          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+            <Layout>
+              <AssessmentDashboard />
             </Layout>
           </ProtectedRoute>
         }

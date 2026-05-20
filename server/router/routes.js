@@ -140,7 +140,10 @@ const {
   getEmailStats,
   getEmailLogs,
   sendBulkBalanceReminders,
-  exportPVHeaders
+  exportPVHeaders,
+  getSmsLogs,
+  getSmsStats,
+  getClassPerformanceAssessment,
 } = require("../controller/control");
 
 const router = express.Router();
@@ -579,15 +582,40 @@ router.post("/payroll/categories", createStaffCategory);
 router.post("/payroll/bulk-import", bulkImportStaff);
 
 // Profit & Loss Routes
-router.get("/finance/profit-loss", getProfitLossData);
-router.get("/finance/profit-loss/export", exportProfitLossReport);
-router.get("/finance/profit-loss/trends", getProfitLossTrends);
+router.get("/finance/profit-loss", authorizeRoles(1, 4), getProfitLossData);
+router.get(
+  "/finance/profit-loss/export",
+  authorizeRoles(1, 4),
+  exportProfitLossReport,
+);
+router.get(
+  "/finance/profit-loss/trends",
+  authorizeRoles(1, 4),
+  getProfitLossTrends,
+);
 
 // Send balance reminder
-router.post("/send-balance-reminder", sendBalanceReminder);
-router.post("/send-bulk-reminders", sendBulkBalanceReminders);
+router.post(
+  "/send-balance-reminder",
+  authorizeRoles(1, 4),
+  sendBalanceReminder,
+);
+router.post(
+  "/send-bulk-reminders",
+  authorizeRoles(1, 4),
+  sendBulkBalanceReminders,
+);
 
 router.get("/email-logs", getEmailLogs);
 router.get("/email-stats", getEmailStats);
+
+router.get("/sms-logs", getSmsLogs);
+router.get("/sms-stats", getSmsStats);
+
+router.get(
+  "/assessment/class-performance",
+  authorizeRoles(1, 4),
+  getClassPerformanceAssessment,
+);
 
 module.exports = router;

@@ -17,27 +17,18 @@ class ArkeselSmsService {
 
   formatPhoneNumber(phone) {
     if (!phone) return null;
-
     let cleaned = phone.toString().trim().replace(/\s+/g, "");
-
-    if (cleaned.startsWith("0")) {
-      cleaned = `233${cleaned.substring(1)}`;
-    }
+    if (cleaned.startsWith("0")) cleaned = `233${cleaned.substring(1)}`;
     cleaned = cleaned.replace("+", "");
-    if (!cleaned.startsWith("233")) {
-      cleaned = `233${cleaned}`;
-    }
-
+    if (!cleaned.startsWith("233")) cleaned = `233${cleaned}`;
     return cleaned;
   }
 
   async sendSMS(phoneNumber, message) {
     try {
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
-
-      if (!formattedPhone) {
+      if (!formattedPhone)
         return { success: false, error: "Invalid phone number" };
-      }
 
       const truncatedMessage =
         message.length > 160 ? message.substring(0, 157) + "..." : message;
@@ -60,18 +51,10 @@ class ArkeselSmsService {
 
       console.log("📥 Arkesel response:", response.data);
 
-      // Check for success based on response structure
-      if (response.data && response.data.code === "ok") {
+      if (response.data && response.data.status === "success") {
         return {
           success: true,
-          messageId: response.data.message_id || Date.now().toString(),
-          data: response.data,
-        };
-      } else if (response.status === 200) {
-        // Sometimes success just means 200 status
-        return {
-          success: true,
-          messageId: Date.now().toString(),
+          messageId: response.data.data?.[0]?.id || Date.now().toString(),
           data: response.data,
         };
       } else {
@@ -83,46 +66,27 @@ class ArkeselSmsService {
     } catch (error) {
       console.error("Arkesel SMS error details:");
       console.error("  Status:", error.response?.status);
-      console.error("  Data:", error.response?.data);
+      console.error("  Data:", JSON.stringify(error.response?.data, null, 2));
       console.error("  Message:", error.message);
 
-      let errorMessage = error.response?.data?.message || error.message;
-
-      // Helpful error messages
-      if (errorMessage.includes("balance")) {
-        errorMessage =
-          "Insufficient SMS credit balance. Please add credit in Arkesel dashboard.";
-      } else if (errorMessage.includes("sender")) {
-        errorMessage = `Sender ID "${this.senderId}" not approved. Use "Arkesel" or wait for approval.`;
-      } else if (errorMessage.includes("api_key")) {
-        errorMessage = "Invalid API key. Please check your ARKESEL_API_KEY.";
-      }
-
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      const errData = error.response?.data?.message || error.message;
+      return { success: false, error: errData };
     }
   }
 
   async getBalance() {
     try {
+      // Correct v2 balance endpoint
       const response = await axios.get(
-        "https://sms.arkesel.com/api/v2/balance",
-        {
-          headers: { "api-key": this.apiKey },
-        },
+        "https://sms.arkesel.com/api/v2/clients/balance-details",
+        { headers: { "api-key": this.apiKey } },
       );
-
-      return {
-        success: true,
-        balance: response.data?.balance || response.data,
-        currency: "GHS",
-      };
+      return { success: true, data: response.data };
     } catch (error) {
       return {
         success: false,
         error: error.response?.data?.message || error.message,
+        status: error.response?.status,
       };
     }
   }

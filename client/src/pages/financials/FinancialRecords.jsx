@@ -223,7 +223,6 @@ const FinancialRecords = () => {
     );
 
     setStudents(response.data.students);
-    console.log("fetched students:", response.data.students);
     setStudentsSummary(response.data.summary);
     setStudentsPagination(response.data.pagination);
   };
@@ -568,13 +567,12 @@ const FinancialRecords = () => {
 
   //send reminder function
   const sendReminder = async (student, e) => {
-    console.log("Sending reminder for student:", student);
-    e.stopPropagation(); // Prevent row click when clicking button
+    e.stopPropagation();
 
-    if (!student.parent_email) {
-      toast?.error("No email address found for this student") ||
+    if (!student.parent_email && !student.parent_contact) {
+      toast?.error("No email or phone number found for this student") ||
         alert(
-          "No email address found for this student. Please add parent email first.",
+          "No contact information found. Please add parent email or phone number.",
         );
       return;
     }
@@ -585,9 +583,13 @@ const FinancialRecords = () => {
       return;
     }
 
+    const willSendEmail = student.parent_email ? "email" : "";
+    const willSendSms = student.parent_contact ? "SMS" : "";
+    const channels = [willSendEmail, willSendSms].filter(Boolean).join(" and ");
+
     if (
       !window.confirm(
-        `Send balance reminder to ${student.parent_name || "parent"} for ${student.first_name} ${student.last_name}?`,
+        `Send balance reminder via ${channels} to ${student.parent_name || "parent"} for ${student.first_name} ${student.last_name}?`,
       )
     ) {
       return;
@@ -601,11 +603,21 @@ const FinancialRecords = () => {
         academic_year_id: selectedAcademicYear,
         term_id: selectedTerm,
       });
-      console.log("Reminder response:", response.data);
+
       if (response.data.success) {
+        const emailStatus = response.data.email.sent ? "✓" : "✗";
+        const smsStatus = response.data.sms.sent ? "✓" : "✗";
+
+        toast?.success(
+          `Reminder sent: Email ${emailStatus}, SMS ${smsStatus}`,
+        ) ||
+          alert(
+            `Reminder sent!\nEmail: ${response.data.email.message}\nSMS: ${response.data.sms.message}`,
+          );
+
         setNotification({
           type: "success",
-          message: "Reminder sent successfully!",
+          message: `Reminder sent: Email ${emailStatus}, SMS ${smsStatus}`,
         });
         setTimeout(() => setNotification(null), 3000);
       }
@@ -1446,13 +1458,12 @@ const FinancialRecords = () => {
                                       ? "bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer"
                                       : "bg-gray-100 text-gray-400 cursor-not-allowed"
                                 }`}
+                               
                                 title={
-                                  !(
-                                    student.parent_email ||
-                                    student.student_email
-                                  )
-                                    ? "No email address"
-                                    : "Send balance reminder"
+                                  !student.parent_email &&
+                                  !student.parent_contact
+                                    ? "No email or phone number"
+                                    : `Send reminder via ${student.parent_email ? "email" : ""}${student.parent_email && student.parent_contact ? " and " : ""}${student.parent_contact ? "SMS" : ""}`
                                 }
                               >
                                 {sendingReminder === student.student_id ? (
@@ -1987,6 +1998,6 @@ const FinancialRecords = () => {
       />
     </div>
   );
-};
+};;
 
 export default FinancialRecords;

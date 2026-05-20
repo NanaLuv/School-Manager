@@ -47,6 +47,7 @@ const Topbar = () => {
       "/daily-payments": "Daily Payments",
       "/finance/reports": "Financial Reports",
       "/expenses": "Expenses",
+      "/academics/assessment": "Assessment",
       // Add more mappings as needed
     };
 
