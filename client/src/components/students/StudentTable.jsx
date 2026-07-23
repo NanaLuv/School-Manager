@@ -46,7 +46,7 @@ const StudentTable = ({
 
     // Try different URL formats
     const baseUrl = "http://localhost:3001";
-    const photoUrl = `${baseUrl}/uploads/students/${student.photo_filename}`;
+    const photoUrl = `/uploads/students/${student.photo_filename}`;
     return photoUrl;
   };
 

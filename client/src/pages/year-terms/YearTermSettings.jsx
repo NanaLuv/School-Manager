@@ -165,10 +165,12 @@ const YearTermSettings = () => {
   const handleDeleteTerm = async (termId) => {
     if (window.confirm("Are you sure you want to delete this term?")) {
       try {
-        await api.delete(`/deleteterm/${termId}`);
-        // You might want to fetch terms separately here
+        const response = await api.delete(`/deleteterm/${termId}`);
+        getAcademicYearsData(); //refresh data
+        alert(response.data?.message);
       } catch (error) {
         console.error("Error deleting term:", error);
+        alert("Failed to delete term, term may contain data");
       }
     }
   };

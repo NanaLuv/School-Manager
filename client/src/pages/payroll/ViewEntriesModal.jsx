@@ -304,7 +304,7 @@ const ViewEntriesModal = ({ periodId, isOpen, onClose, periodName }) => {
                               <UserIcon className="h-6 w-6 text-blue-600" />
                             </div>
                             <div className="ml-4">
-                              <div className="font-medium text-gray-900">
+                              <div className="flex items-center">
                                 {entry.staff_name}
                               </div>
                               <div className="text-gray-500">

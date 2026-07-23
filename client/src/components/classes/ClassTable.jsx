@@ -6,7 +6,7 @@ import { useAuth } from "../../pages/contexts/AuthContext";
 
 const ClassTable = ({ classes, onEdit, onDelete, emptyMessage }) => {
   const navigate = useNavigate();
-const {user} = useAuth()
+  const { user } = useAuth();
   const handleRowClick = (classItem) => {
     navigate(`/classes/${classItem.id}`);
   };
@@ -28,7 +28,7 @@ const {user} = useAuth()
               Class Name
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Room Number
+              Room Name
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Capacity
@@ -78,8 +78,8 @@ const {user} = useAuth()
                     classItem.capacity_status === "error"
                       ? "bg-red-100 text-red-800"
                       : classItem.capacity_status === "warning"
-                      ? "bg-yellow-100 text-yellow-800"
-                      : "bg-green-100 text-green-800"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-green-100 text-green-800"
                   }`}
                 >
                   {classItem.capacity_percentage || "No limit"}

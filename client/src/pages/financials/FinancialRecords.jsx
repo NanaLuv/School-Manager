@@ -1410,7 +1410,7 @@ const FinancialRecords = () => {
                           <td className="p-3">
                             <div className="text-sm">{student.parent_name}</div>
                             <div className="text-xs text-gray-500">
-                              {student.parent_email}
+                              {student.parent_contact || "No contact" }
                             </div>
                           </td>
                           <td className="p-3 text-right font-medium">

@@ -5,6 +5,7 @@ import LoadingSpinner from "../../components/common/LoadingSpinner";
 import axios from "axios";
 import { useAcademicData } from "../../hooks/useAcademicContext";
 import api from "../../components/axiosconfig/axiosConfig";
+import { useAuth } from "../contexts/AuthContext";
 
 const AttendanceList = () => {
   const [loading, setLoading] = useState(false);
@@ -18,6 +19,7 @@ const AttendanceList = () => {
   });
 
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Use the academic data hook - it auto-selects everything!
   const {

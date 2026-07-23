@@ -39,7 +39,7 @@ const Topbar = () => {
       "/email-logs": "Email Logs",
       "/profit-loss": "Profit & Loss",
       "/payroll-dashboard": "Payroll Dashboard",
-      "/finance/arrears": "Arrears",
+      "/finance/arrears": "Arrears & Credits",
       "/finance/fee-categories": "Fee Categories",
       "/finance/classbills": "Class Bills",
       "/finance/receive-payment": "Receive Payments",
@@ -48,6 +48,15 @@ const Topbar = () => {
       "/finance/reports": "Financial Reports",
       "/expenses": "Expenses",
       "/academics/assessment": "Assessment",
+      "/academics/attendance": "Attendance",
+      "/subjects-assignments": "Assign Subjects",
+      "/classes/teachers": "Class Teachers",
+      "/activity-logs": "Activity Logs",
+      "/academics/attendance/reports": "Attendance Reports",
+      "/academics/grades": "Scores Reports",
+      "/profile": "My Profile",
+      "/settings": "Settings",
+      "/finance/bill-overview": "Bill Overview",
       // Add more mappings as needed
     };
 

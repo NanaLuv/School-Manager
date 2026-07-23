@@ -74,7 +74,6 @@ const ProfitLoss = () => {
         throw new Error("Invalid response from server");
       }
       setPlData(plResponse.data);
-      console.log("Fetched P&L data:", plResponse.data);
       setTrends(trendsResponse.data);
 
       // Load charts after data is ready
@@ -871,6 +870,125 @@ const ProfitLoss = () => {
           </div>
         </div>
       </div>
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Income vs Expenses Trend */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Income vs Expenses Trend
+          </h3>
+          <ChartContainer>
+            {Recharts && (
+              <Recharts.ResponsiveContainer
+                width="100%"
+                height="100%"
+                minHeight={256}
+              >
+                <Recharts.AreaChart
+                  data={trends.trends || []}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 50 }}
+                >
+                  <Recharts.CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#e5e7eb"
+                  />
+                  <Recharts.XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 12 }}
+                    angle={-45}
+                    textAnchor="end"
+                    height={50}
+                  />
+                  <Recharts.YAxis
+                    tickFormatter={(value) =>
+                      `Ghc ${(value / 1000).toFixed(0)}k`
+                    }
+                    tick={{ fontSize: 12 }}
+                  />
+                  <Recharts.Tooltip
+                    formatter={(value) => [formatCurrency(value), "Amount"]}
+                    labelFormatter={(label) => `Period: ${label}`}
+                  />
+                  <Recharts.Area
+                    type="monotone"
+                    dataKey="total_income"
+                    name="Income"
+                    stroke={COLORS.income}
+                    fill={COLORS.income}
+                    fillOpacity={0.2}
+                    strokeWidth={2}
+                  />
+                  <Recharts.Area
+                    type="monotone"
+                    dataKey="total_expenses"
+                    name="Expenses"
+                    stroke={COLORS.expenses}
+                    fill={COLORS.expenses}
+                    fillOpacity={0.2}
+                    strokeWidth={2}
+                  />
+                  <Recharts.Legend />
+                </Recharts.AreaChart>
+              </Recharts.ResponsiveContainer>
+            )}
+          </ChartContainer>
+        </div>
+
+        {/* Profit/Loss Trend */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Profit/Loss Trend
+          </h3>
+          <ChartContainer>
+            {Recharts && (
+              <Recharts.ResponsiveContainer
+                width="100%"
+                height="100%"
+                minHeight={256}
+              >
+                <Recharts.BarChart
+                  data={trends.trends || []}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 50 }}
+                >
+                  <Recharts.CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#e5e7eb"
+                  />
+                  <Recharts.XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 12 }}
+                    angle={-45}
+                    textAnchor="end"
+                    height={50}
+                  />
+                  <Recharts.YAxis
+                    tickFormatter={(value) =>
+                      `Ghc ${(value / 1000).toFixed(0)}k`
+                    }
+                    tick={{ fontSize: 12 }}
+                  />
+                  <Recharts.Tooltip
+                    formatter={(value) => [
+                      formatCurrency(value),
+                      "Profit/Loss",
+                    ]}
+                    labelFormatter={(label) => `Period: ${label}`}
+                  />
+                  <Recharts.Bar
+                    dataKey="profit_loss"
+                    name="Profit/Loss"
+                    fill={(entry) =>
+                      entry.profit_loss > 0 ? COLORS.profit : COLORS.expenses
+                    }
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Recharts.Legend />
+                </Recharts.BarChart>
+              </Recharts.ResponsiveContainer>
+            )}
+          </ChartContainer>
+        </div>
+      </div>
 
       {/* Detailed Metrics */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
@@ -1080,125 +1198,6 @@ const ProfitLoss = () => {
               </p>
             </div>
           </div>
-        </div>
-      </div>
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Income vs Expenses Trend */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Income vs Expenses Trend
-          </h3>
-          <ChartContainer>
-            {Recharts && (
-              <Recharts.ResponsiveContainer
-                width="100%"
-                height="100%"
-                minHeight={256}
-              >
-                <Recharts.AreaChart
-                  data={trends.trends || []}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 50 }}
-                >
-                  <Recharts.CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#e5e7eb"
-                  />
-                  <Recharts.XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 12 }}
-                    angle={-45}
-                    textAnchor="end"
-                    height={50}
-                  />
-                  <Recharts.YAxis
-                    tickFormatter={(value) =>
-                      `Ghc ${(value / 1000).toFixed(0)}k`
-                    }
-                    tick={{ fontSize: 12 }}
-                  />
-                  <Recharts.Tooltip
-                    formatter={(value) => [formatCurrency(value), "Amount"]}
-                    labelFormatter={(label) => `Period: ${label}`}
-                  />
-                  <Recharts.Area
-                    type="monotone"
-                    dataKey="total_income"
-                    name="Income"
-                    stroke={COLORS.income}
-                    fill={COLORS.income}
-                    fillOpacity={0.2}
-                    strokeWidth={2}
-                  />
-                  <Recharts.Area
-                    type="monotone"
-                    dataKey="total_expenses"
-                    name="Expenses"
-                    stroke={COLORS.expenses}
-                    fill={COLORS.expenses}
-                    fillOpacity={0.2}
-                    strokeWidth={2}
-                  />
-                  <Recharts.Legend />
-                </Recharts.AreaChart>
-              </Recharts.ResponsiveContainer>
-            )}
-          </ChartContainer>
-        </div>
-
-        {/* Profit/Loss Trend */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Profit/Loss Trend
-          </h3>
-          <ChartContainer>
-            {Recharts && (
-              <Recharts.ResponsiveContainer
-                width="100%"
-                height="100%"
-                minHeight={256}
-              >
-                <Recharts.BarChart
-                  data={trends.trends || []}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 50 }}
-                >
-                  <Recharts.CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#e5e7eb"
-                  />
-                  <Recharts.XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 12 }}
-                    angle={-45}
-                    textAnchor="end"
-                    height={50}
-                  />
-                  <Recharts.YAxis
-                    tickFormatter={(value) =>
-                      `Ghc ${(value / 1000).toFixed(0)}k`
-                    }
-                    tick={{ fontSize: 12 }}
-                  />
-                  <Recharts.Tooltip
-                    formatter={(value) => [
-                      formatCurrency(value),
-                      "Profit/Loss",
-                    ]}
-                    labelFormatter={(label) => `Period: ${label}`}
-                  />
-                  <Recharts.Bar
-                    dataKey="profit_loss"
-                    name="Profit/Loss"
-                    fill={(entry) =>
-                      entry.profit_loss > 0 ? COLORS.profit : COLORS.expenses
-                    }
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Recharts.Legend />
-                </Recharts.BarChart>
-              </Recharts.ResponsiveContainer>
-            )}
-          </ChartContainer>
         </div>
       </div>
     </div>

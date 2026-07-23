@@ -13,27 +13,25 @@ import api from "../../components/axiosconfig/axiosConfig";
 import { useAuth } from "../contexts/AuthContext";
 
 const ArrearsManagement = () => {
-  const userId = useAuth();
+  const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [arrears, setArrears] = useState([]);
-  const [allTerms, setAllTerms] = useState([]); // All terms from all years
-  const [filteredTerms, setFilteredTerms] = useState([]); // Terms filtered by selected academic year
+  const [allTerms, setAllTerms] = useState([]);
   const [overpayments, setOverpayments] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [formType, setFormType] = useState("arrear"); // "arrear" or "overpayment"
+  const [formType, setFormType] = useState("arrear");
 
-  // Enhanced filters
   const [filters, setFilters] = useState({
     class_id: "",
     academic_year_id: "",
     term_id: "",
     student_search: "",
-    has_arrears: "all", // "all", "yes", "no"
-    has_overpayment: "all", // "all", "yes", "no"
-    amount_range: "all", // "all", "0-100", "100-500", "500+"
+    has_arrears: "all",
+    has_overpayment: "all",
+    amount_range: "all",
   });
 
   const [newRecord, setNewRecord] = useState({
@@ -49,29 +47,32 @@ const ArrearsManagement = () => {
   const [academicYears, setAcademicYears] = useState([]);
   const [terms, setTerms] = useState([]);
 
+  // Fetch students when class filter changes
   useEffect(() => {
-    fetchData();
+    fetchStudents();
+  }, [filters.class_id]);
+
+  useEffect(() => {
+    fetchInitialData();
   }, []);
 
   useEffect(() => {
     applyFilters();
   }, [filters, students]);
 
-  const fetchData = async () => {
+  const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [classesRes, yearsRes, termsRes, studentsRes] = await Promise.all([
+      const [classesRes, yearsRes, termsRes] = await Promise.all([
         api.get("/getclasses"),
         api.get("/getacademicyears"),
         api.get("/getterms"),
-        api.get("/getstudents?includeInactive=true"),
       ]);
 
       setClasses(classesRes.data);
       setAcademicYears(yearsRes.data);
-      setAllTerms(termsRes.data); // Store all terms
+      setAllTerms(termsRes.data);
 
-      // For filters, set current academic year and its first term
       const currentYear = yearsRes.data.find((year) => year.is_current);
       if (currentYear) {
         const currentYearTerms = termsRes.data.filter(
@@ -85,78 +86,64 @@ const ArrearsManagement = () => {
         }));
       }
 
-      setStudents(studentsRes.data?.students || []);
+      // Initial fetch of students
+      await fetchStudents();
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error("Error fetching initial data:", error);
       alert("Error loading data");
     }
     setLoading(false);
   };
 
-  // Update when academic year changes in filters
-  useEffect(() => {
-    if (filters.academic_year_id && allTerms.length > 0) {
-      const termsForYear = allTerms.filter(
-        (term) => term.academic_year_id === filters.academic_year_id,
-      );
-      setFilteredTerms(termsForYear);
+  const fetchStudents = async () => {
+    setLoading(true);
+    try {
+      // Build query params
+      const params = new URLSearchParams();
 
-      // Auto-select first term if current selection is invalid
-      if (
-        termsForYear.length > 0 &&
-        !termsForYear.some((term) => term.id === filters.term_id)
-      ) {
-        setFilters((prev) => ({ ...prev, term_id: termsForYear[0].id }));
+      // Get all students (no pagination limit)
+      params.append("includeInactive", "true");
+      params.append("limit", "1000"); // Get all students
+
+      if (filters.class_id) {
+        params.append("class_id", filters.class_id);
       }
-    }
-  }, [filters.academic_year_id, allTerms]);
 
-  // Update when academic year changes in newRecord
-  useEffect(() => {
-    if (newRecord.academic_year_id && allTerms.length > 0) {
-      const termsForYear = allTerms.filter(
-        (term) => term.academic_year_id === newRecord.academic_year_id,
-      );
-
-      // Auto-select first term if current selection is invalid
-      if (
-        termsForYear.length > 0 &&
-        !termsForYear.some((term) => term.id === newRecord.term_id)
-      ) {
-        setNewRecord((prev) => ({ ...prev, term_id: termsForYear[0].id }));
-      }
+      const response = await api.get(`/getstudents?${params.toString()}`);
+      const studentsData = response.data?.students || [];
+      setStudents(studentsData);
+    } catch (error) {
+      console.error("Error fetching students:", error);
     }
-  }, [newRecord.academic_year_id, allTerms]);
+    setLoading(false);
+  };
 
   const applyFilters = () => {
-    let filtered = students;
-
-    // Class filter
-    if (filters.class_id) {
-      filtered = filtered.filter(
-        (student) => student.class_id === filters.class_id,
-      );
-    }
+    let filtered = [...students];
 
     // Student search filter
     if (filters.student_search) {
       const searchTerm = filters.student_search.toLowerCase();
       filtered = filtered.filter(
         (student) =>
-          student.first_name.toLowerCase().includes(searchTerm) ||
-          student.last_name.toLowerCase().includes(searchTerm) ||
-          student.admission_number.toLowerCase().includes(searchTerm),
+          student.first_name?.toLowerCase().includes(searchTerm) ||
+          student.last_name?.toLowerCase().includes(searchTerm) ||
+          student.admission_number?.toLowerCase().includes(searchTerm),
       );
     }
 
     // Has arrears filter
-    if (filters.has_arrears !== "all") {
-      // This would need additional data - we'll implement this after we have the data structure
+    if (filters.has_arrears === "yes") {
+      filtered = filtered.filter((student) => student.has_arrears === 1);
+    } else if (filters.has_arrears === "no") {
+      filtered = filtered.filter((student) => !student.has_arrears);
     }
 
     // Has overpayment filter
-    if (filters.has_overpayment !== "all") {
-      // This would need additional data - we'll implement this after we have the data structure
+    if (filters.has_overpayment === "yes") {
+      filtered = filtered.filter((student) => student.has_overpayment === 1);
+    } else if (filters.has_overpayment === "no") {
+      filtered = filtered.filter((student) => !student.has_overpayment);
     }
 
     setFilteredStudents(filtered);
@@ -168,12 +155,10 @@ const ArrearsManagement = () => {
         api.get(`/getstudentarrears/${studentId}`),
         api.get(`/getstudentoverpayments/${studentId}`),
       ]);
-
-      setArrears(arrearsRes.data);
-      setOverpayments(overpaymentsRes.data);
+      setArrears(arrearsRes.data?.arrears || []);
+      setOverpayments(overpaymentsRes.data?.overpayments || []);
     } catch (error) {
       console.error("Error fetching student records:", error);
-      // Don't set empty arrays on error, keep existing data
     }
   };
 
@@ -183,13 +168,11 @@ const ArrearsManagement = () => {
       return;
     }
 
-    // Validate term_id
     if (!newRecord.term_id || newRecord.term_id === "") {
       alert("Please select a term");
       return;
     }
 
-    // Validate academic_year_id
     if (!newRecord.academic_year_id || newRecord.academic_year_id === "") {
       alert("Please select an academic year");
       return;
@@ -207,7 +190,7 @@ const ArrearsManagement = () => {
               amount: parseFloat(newRecord.amount),
               academic_year_id: parseInt(newRecord.academic_year_id),
               term_id: parseInt(newRecord.term_id),
-              created_by: userId.id || 1,
+              created_by: user?.id || 1,
             }
           : {
               student_id: selectedStudent.id,
@@ -217,12 +200,11 @@ const ArrearsManagement = () => {
               term_id: parseInt(newRecord.term_id),
               is_credit_note: newRecord.is_credit_note,
               can_refund: newRecord.can_refund,
-              created_by: userId.id || 1,
+              created_by: user?.id || 1,
             };
 
-      const response = await api.post(endpoint, payload);
+      await api.post(endpoint, payload);
 
-      // Reset form
       setNewRecord({
         description: "",
         amount: "",
@@ -233,11 +215,10 @@ const ArrearsManagement = () => {
       });
       setShowAddForm(false);
 
-      // Force refresh the student records - FIXED
       await fetchStudentRecords(selectedStudent.id);
 
       alert(
-        `${formType === "arrear" ? "Arrear" : "Overpayment"} added successfully`,
+        `${formType === "arrear" ? "Arrears" : "Credit"} added successfully`,
       );
     } catch (error) {
       console.error(`Error adding ${formType}:`, error);
@@ -260,7 +241,7 @@ const ArrearsManagement = () => {
           : `/deletestudentoverpayment/${recordId}`;
 
       await api.delete(endpoint);
-      fetchStudentRecords(selectedStudent.id);
+      await fetchStudentRecords(selectedStudent.id);
       alert(
         `${type === "arrear" ? "Arrear" : "Overpayment"} deleted successfully`,
       );
@@ -272,7 +253,7 @@ const ArrearsManagement = () => {
 
   const calculateTotalArrears = () => {
     return arrears.reduce(
-      (total, arrear) => total + parseFloat(arrear.amount),
+      (total, arrear) => total + parseFloat(arrear.amount || 0),
       0,
     );
   };
@@ -281,7 +262,7 @@ const ArrearsManagement = () => {
     return overpayments
       .filter((op) => op.status === "Active")
       .reduce(
-        (total, overpayment) => total + parseFloat(overpayment.amount),
+        (total, overpayment) => total + parseFloat(overpayment.amount || 0),
         0,
       );
   };
@@ -290,18 +271,28 @@ const ArrearsManagement = () => {
     return calculateTotalOverpayments() - calculateTotalArrears();
   };
 
-  // Enhanced openAddForm function
+  // open the add form and set default values based on the type (arrear or overpayment)
   const openAddForm = async (type) => {
     setFormType(type);
 
-    if (type === "arrear") {
-      // For arrears: Set to previous academic year by default
-      const currentYear = academicYears.find((year) => year.is_current);
-      const previousYears = academicYears
-        .filter((year) => !year.is_current)
-        .sort((a, b) => new Date(b.start_date) - new Date(a.start_date)); // Most recent first
+    // Get current year and its terms
+    const currentYear = academicYears.find((year) => year.is_current);
+    const currentYearTerms = currentYear
+      ? allTerms.filter((term) => term.academic_year_id === currentYear.id)
+      : [];
 
-      const defaultYear = previousYears[0] || currentYear; // Use most recent previous year, or current if none
+    if (type === "arrear") {
+      // For arrears: Default to current year, but also show previous years in dropdown
+      // Use current year if it exists, otherwise use the most recent year
+      let defaultYear = currentYear;
+
+      if (!defaultYear && academicYears.length > 0) {
+        // Sort years by start date descending (most recent first)
+        const sortedYears = [...academicYears].sort(
+          (a, b) => new Date(b.start_date) - new Date(a.start_date),
+        );
+        defaultYear = sortedYears[0];
+      }
 
       if (defaultYear) {
         const yearTerms = allTerms.filter(
@@ -315,27 +306,68 @@ const ArrearsManagement = () => {
           description: "",
           amount: "",
         }));
+      } else {
+        // No years available at all
+        setNewRecord((prev) => ({
+          ...prev,
+          academic_year_id: "",
+          term_id: "",
+          description: "",
+          amount: "",
+        }));
       }
     } else {
-      // For overpayments: Use current academic year and term
-      const currentYear = academicYears.find((year) => year.is_current);
+      // For overpayments/credits: Always use current year
       if (currentYear) {
+        // Get terms for current year
         const currentYearTerms = allTerms.filter(
           (term) => term.academic_year_id === currentYear.id,
         );
 
+        // Try to match the selected term from filters, or use the first term
+        const defaultTermId =
+          currentYearTerms.find((term) => term.id === parseInt(filters.term_id))
+            ?.id ||
+          currentYearTerms[0]?.id ||
+          "";
+
         setNewRecord((prev) => ({
           ...prev,
           academic_year_id: currentYear.id,
-          term_id:
-            currentYearTerms.find((term) => term.id === filters.term_id)?.id ||
-            currentYearTerms[0]?.id ||
-            "",
+          term_id: defaultTermId,
           description: "",
           amount: "",
           is_credit_note: false,
           can_refund: true,
         }));
+      } else {
+        // If no current year, try to use the first available year
+        const firstYear = academicYears[0];
+        if (firstYear) {
+          const firstYearTerms = allTerms.filter(
+            (term) => term.academic_year_id === firstYear.id,
+          );
+
+          setNewRecord((prev) => ({
+            ...prev,
+            academic_year_id: firstYear.id,
+            term_id: firstYearTerms[0]?.id || "",
+            description: "",
+            amount: "",
+            is_credit_note: false,
+            can_refund: true,
+          }));
+        } else {
+          setNewRecord((prev) => ({
+            ...prev,
+            academic_year_id: "",
+            term_id: "",
+            description: "",
+            amount: "",
+            is_credit_note: false,
+            can_refund: true,
+          }));
+        }
       }
     }
 
@@ -345,8 +377,8 @@ const ArrearsManagement = () => {
   const clearFilters = () => {
     setFilters({
       class_id: "",
-      academic_year_id: filters.academic_year_id, // Keep academic year
-      term_id: filters.term_id, // Keep term
+      academic_year_id: filters.academic_year_id,
+      term_id: filters.term_id,
       student_search: "",
       has_arrears: "all",
       has_overpayment: "all",
@@ -390,15 +422,16 @@ const ArrearsManagement = () => {
             </label>
             <select
               value={filters.class_id}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, class_id: e.target.value }))
-              }
+              onChange={(e) => {
+                setFilters((prev) => ({ ...prev, class_id: e.target.value }));
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">All Classes</option>
               {classes.map((classItem) => (
                 <option key={classItem.id} value={classItem.id}>
                   {classItem.class_name}
+                  {classItem.room_number && ` (${classItem.room_number})`}
                 </option>
               ))}
             </select>
@@ -422,6 +455,7 @@ const ArrearsManagement = () => {
               {academicYears.map((year) => (
                 <option key={year.id} value={year.id}>
                   {year.year_label}
+                  {year.is_current && " (Current)"}
                 </option>
               ))}
             </select>
@@ -439,11 +473,15 @@ const ArrearsManagement = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">Select Term</option>
-              {terms.map((term) => (
-                <option key={term.id} value={term.id}>
-                  {term.term_name}
-                </option>
-              ))}
+              {allTerms
+                .filter(
+                  (term) => term.academic_year_id === filters.academic_year_id,
+                )
+                .map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.term_name}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -467,7 +505,7 @@ const ArrearsManagement = () => {
         </div>
 
         {/* Advanced Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200">
+        {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Has Arrears
@@ -525,7 +563,7 @@ const ArrearsManagement = () => {
               <option value="500+">Ghc 500+</option>
             </select>
           </div>
-        </div>
+        </div> */}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -536,7 +574,15 @@ const ArrearsManagement = () => {
               Students ({filteredStudents.length})
             </h3>
             <span className="text-sm text-gray-500">
-              Showing {filteredStudents.length} of {students.length}
+              {filters.class_id ? (
+                <>
+                  {filteredStudents.length} in{" "}
+                  {classes.find((c) => c.id === parseInt(filters.class_id))
+                    ?.class_name || "selected class"}
+                </>
+              ) : (
+                `Showing ${filteredStudents.length} of ${students.length}`
+              )}
             </span>
           </div>
           <div className="max-h-96 overflow-y-auto">
@@ -557,7 +603,8 @@ const ArrearsManagement = () => {
                       {student.first_name} {student.last_name}
                     </h4>
                     <p className="text-sm text-gray-500">
-                      {student.admission_number} • {student.class_name}
+                      {student.admission_number} •{" "}
+                      {student.class_name || "No Class Assigned"}
                     </p>
                     <div className="flex space-x-2 mt-1">
                       {student.has_arrears && (
@@ -592,7 +639,7 @@ const ArrearsManagement = () => {
           </div>
         </div>
 
-        {/* Balances Management */}
+        {/* Balances Management - rest remains the same */}
         <div className="bg-white rounded-lg shadow border">
           <div className="p-4 border-b border-gray-200">
             <div className="flex justify-between items-center">
@@ -671,32 +718,6 @@ const ArrearsManagement = () => {
                 </div>
               </div>
 
-              {/* Tabs for Arrears and Overpayments */}
-              <div className="mb-4 border-b border-gray-200">
-                <div className="flex space-x-4">
-                  <button
-                    className={`pb-2 px-1 font-medium ${
-                      arrears.length > 0
-                        ? "text-red-600 border-b-2 border-red-500"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    Arrears ({arrears.length})
-                  </button>
-                  <button
-                    className={`pb-2 px-1 font-medium ${
-                      overpayments.length > 0
-                        ? "text-green-600 border-b-2 border-green-500"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    Overpayments (
-                    {overpayments.filter((op) => op.status === "Active").length}
-                    )
-                  </button>
-                </div>
-              </div>
-
               {/* Arrears List */}
               <div className="space-y-3 mb-6">
                 <h4 className="font-medium text-gray-900">
@@ -714,7 +735,8 @@ const ArrearsManagement = () => {
                         </div>
                         <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-1">
                           <span>
-                            {arrear.year_label} • {arrear.term_name}
+                            {arrear.year_label || "N/A"} •{" "}
+                            {arrear.term_name || "N/A"}
                           </span>
                           <span>
                             Added:{" "}
@@ -801,7 +823,6 @@ const ArrearsManagement = () => {
               </div>
 
               {/* Add Record Form */}
-              {/* Add Record Form */}
               {showAddForm && (
                 <div className="mt-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
                   <h4 className="font-medium text-gray-900 mb-3">
@@ -809,7 +830,6 @@ const ArrearsManagement = () => {
                     {formType === "arrear" ? "Arrear" : "Credit/Overpayment"}
                   </h4>
 
-                  {/* Guidance Message */}
                   <div
                     className={`mb-4 p-3 rounded-lg ${
                       formType === "arrear"
@@ -912,7 +932,7 @@ const ArrearsManagement = () => {
                             .filter(
                               (term) =>
                                 term.academic_year_id ===
-                                newRecord.academic_year_id,
+                                parseInt(newRecord.academic_year_id),
                             )
                             .sort(
                               (a, b) =>
@@ -1046,4 +1066,5 @@ const ArrearsManagement = () => {
     </div>
   );
 };
+
 export default ArrearsManagement;

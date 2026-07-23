@@ -65,7 +65,6 @@ const CreateEntryForm = ({ periodId, onClose, onSuccess }) => {
 
       if (response.data.exists) {
         setPreviousEntry(response.data.entry);
-        console.log("Previous entry data:", response.data.entry);
 
         // Auto-fill form with previous data (you can adjust this)
         const prev = response.data.entry;
@@ -144,7 +143,6 @@ const CreateEntryForm = ({ periodId, onClose, onSuccess }) => {
 
       const response = await api.post("/payroll/calculate", payload);
 
-      console.log("Calculation response:", response.data);
       setCalculated(response.data.calculated);
     } catch (error) {
       console.error("Error calculating payroll:", error);

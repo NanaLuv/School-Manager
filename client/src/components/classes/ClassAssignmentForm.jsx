@@ -90,20 +90,6 @@ const ClassAssignmentForm = ({
     }
   };
 
-  // Get unassigned students for selected academic year
-  // const getAvailableStudents = () => {
-  //   if (!formData.academic_year_id) return students;
-
-  //   return students.filter((student) => {
-  //     const hasAssignment = assignment?.some(
-  //       (assignment) =>
-  //         assignment.student_id === student.id &&
-  //         assignment.academic_year_id == formData.academic_year_id
-  //     );
-  //     return !hasAssignment;
-  //   });
-  // };
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

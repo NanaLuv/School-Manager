@@ -7,14 +7,20 @@ import {
   BanknotesIcon,
   DocumentArrowUpIcon,
   DocumentArrowDownIcon,
+  ArrowPathIcon,
+  UserMinusIcon,
+  UserIcon,
+  TagIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import Modal from "../../components/common/Modal";
 import * as XLSX from "xlsx";
 import api from "../../components/axiosconfig/axiosConfig";
+import useDebounce from "../../hooks/useDebounce";
 
 const StaffList = () => {
   const [staff, setStaff] = useState([]);
+  const [inactiveStaff, setInactiveStaff] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -22,12 +28,28 @@ const StaffList = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
+  const [isInactiveModalOpen, setIsInactiveModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
+  const [showActiveOnly, setShowActiveOnly] = useState(true);
+
+  // Category Management State
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryFormData, setCategoryFormData] = useState({
+    category_name: "",
+    description: "",
+  });
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   useEffect(() => {
-    fetchStaff();
-    fetchCategories();
-  }, [currentPage, searchTerm]);
+    if (showActiveOnly) {
+      fetchStaff();
+    } else {
+      fetchInactiveStaff();
+    }
+  }, [currentPage, debouncedSearchTerm, showActiveOnly]);
 
   const fetchStaff = async () => {
     setLoading(true);
@@ -36,12 +58,13 @@ const StaffList = () => {
         params: {
           page: currentPage,
           limit: 10,
-          search: searchTerm,
+          search: debouncedSearchTerm,
+          is_active: "true",
         },
       });
-
       setStaff(response.data.staff || []);
       setTotalPages(response.data.pagination?.totalPages || 1);
+      setCategories(response.data.categories || []);
     } catch (error) {
       console.error("Error fetching staff:", error);
     } finally {
@@ -49,20 +72,48 @@ const StaffList = () => {
     }
   };
 
-  const fetchCategories = async () => {
+  // ========== CATEGORY MANAGEMENT FUNCTIONS ==========
+
+  const handleAddCategory = () => {
+    setEditingCategory(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleEditCategory = (category) => {
+    setEditingCategory(category);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    if (!window.confirm("Are you sure you want to delete this category?"))
+      return;
+
     try {
-      const response = await api.get("/payroll/categories");
-      setCategories(response.data || []);
+      await api.delete(`/payroll/categories/${categoryId}`);
+      alert("Category deleted successfully!");
     } catch (error) {
-      console.error("Error fetching categories:", error);
-      // Create default categories if needed
-      setCategories([
-        { id: 1, category_name: "Teacher" },
-        { id: 2, category_name: "Administrator" },
-        { id: 3, category_name: "Accountant" },
-        { id: 4, category_name: "Janitor" },
-        { id: 5, category_name: "Security" },
-      ]);
+      console.error("Error deleting category:", error);
+      alert(error.response?.data?.error || "Failed to delete category");
+    }
+  };
+
+  const fetchInactiveStaff = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("/payroll/staff/inactive", {
+        params: {
+          page: currentPage,
+          limit: 10,
+          search: debouncedSearchTerm,
+        },
+      });
+
+      setInactiveStaff(response.data.staff || []);
+      setTotalPages(response.data.pagination?.totalPages || 1);
+    } catch (error) {
+      console.error("Error fetching inactive staff:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -75,13 +126,24 @@ const StaffList = () => {
     setIsBulkImportModalOpen(true);
   };
 
+  const handleViewInactive = () => {
+    setShowActiveOnly(false);
+    setCurrentPage(1);
+    setIsInactiveModalOpen(true);
+  };
+
+  const handleViewActive = () => {
+    setShowActiveOnly(true);
+    setCurrentPage(1);
+    fetchStaff();
+  };
+
   const handleDownloadTemplate = () => {
-    // Create template data
     const templateData = [
       {
         staff_number: "EMP001",
-        first_name: "John",
-        last_name: "Doe",
+        first_name: "Nana",
+        last_name: "Manu",
         category: "Teacher",
         employment_date: "2024-01-15",
         contact_phone: "0551234567",
@@ -90,17 +152,14 @@ const StaffList = () => {
         bank_branch: "Accra Main",
         mobile_money_number: "0551234567",
         mobile_money_provider: "MTN",
-        emergency_contact: "Jane Doe",
+        emergency_contact: "Nana Love",
         emergency_phone: "0557654321",
       },
     ];
 
-    // Create worksheet
     const worksheet = XLSX.utils.json_to_sheet(templateData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
-
-    // Generate file
     XLSX.writeFile(workbook, "staff_import_template.xlsx");
   };
 
@@ -115,7 +174,6 @@ const StaffList = () => {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      // Validate and map data
       const staffData = jsonData
         .map((row) => ({
           staff_number: row.staff_number || row["Staff Number"],
@@ -133,10 +191,9 @@ const StaffList = () => {
           emergency_contact: row.emergency_contact || row["Emergency Contact"],
           emergency_phone: row.emergency_phone || row["Emergency Phone"],
         }))
-        .filter((staff) => staff.first_name && staff.last_name); // Remove empty rows
+        .filter((staff) => staff.first_name && staff.last_name);
 
       try {
-        // Send bulk data to backend
         const response = await api.post("/payroll/bulk-import", {
           staff: staffData,
         });
@@ -156,7 +213,7 @@ const StaffList = () => {
     const category = categories.find(
       (cat) => cat.category_name.toLowerCase() === categoryName?.toLowerCase(),
     );
-    return category ? category.id : 1; // Default to first category if not found
+    return category ? category.id : 1;
   };
 
   const handleEditStaff = (staffMember) => {
@@ -164,35 +221,124 @@ const StaffList = () => {
     setIsAddModalOpen(true);
   };
 
-  const handleDeleteStaff = async (staffId) => {
-    if (window.confirm("Are you sure you want to delete this staff member?")) {
+  const handleDeleteStaff = async (staffMember) => {
+    if (staffMember.has_payroll_history) {
+      const confirmDeactivate = window.confirm(
+        `This staff member has payroll history.\n\nDo you want to DEACTIVATE ${staffMember.first_name} ${staffMember.last_name}?\n\n- They won't appear in active staff lists\n- They can be reactivated later\n- Payroll records will be preserved\n\nClick OK to deactivate, Cancel to cancel.`,
+      );
+
+      if (confirmDeactivate) {
+        try {
+          await api.put(`/payroll/staff/${staffMember.id}/deactivate`, {
+            is_active: false,
+          });
+          alert(
+            `${staffMember.first_name} ${staffMember.last_name} has been deactivated`,
+          );
+          fetchStaff();
+        } catch (error) {
+          console.error("Error deactivating staff:", error);
+          alert("Failed to deactivate staff member");
+        }
+      }
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to DELETE ${staffMember.first_name} ${staffMember.last_name}?\n\nThis action cannot be undone.`,
+    );
+
+    if (confirmDelete) {
       try {
-        await api.delete(`/payroll/staff/${staffId}`);
+        await api.delete(`/payroll/staff/${staffMember.id}`);
+        alert("Staff member deleted successfully");
         fetchStaff();
       } catch (error) {
         console.error("Error deleting staff:", error);
-        alert("Failed to delete staff member");
+        alert(error.response?.data?.error || "Failed to delete staff member");
       }
     }
   };
 
+  const handleActivateStaff = async (staffMember) => {
+    const confirmActivate = window.confirm(
+      `Activate ${staffMember.first_name} ${staffMember.last_name}?\n\nThey will be available for payroll processing again.`,
+    );
+
+    if (confirmActivate) {
+      try {
+        const response = await api.put(
+          `/payroll/staff/${staffMember.id}/activate`,
+        );
+        alert(response.data.message);
+        fetchInactiveStaff();
+        fetchStaff();
+      } catch (error) {
+        console.error("Error activating staff:", error);
+        alert(error.response?.data?.error || "Failed to activate staff member");
+      }
+    }
+  };
+
+  // Unified save function that decides which action to take
   const handleSaveStaff = async (staffData) => {
     try {
       if (editingStaff) {
-        await api.put(`/payroll/staff/${editingStaff.id}`, staffData);
+        // Call the update function
+        await handleUpdateStaff(staffData);
       } else {
-        await api.post("/payroll/addstaff", staffData);
+        // Call the create function
+        await handleSaveNewStaff(staffData);
       }
+    } catch (error) {
+      // Error is already handled in the individual functions
+      console.error("Error in handleSaveStaff:", error);
+    }
+  };
+
+  const handleSaveNewStaff = async (staffData) => {
+    try {
+      await api.post("/payroll/addstaff", staffData);
+      alert("Staff member added successfully!");
       setIsAddModalOpen(false);
       fetchStaff();
     } catch (error) {
-      console.error("Error saving staff:", error);
-      alert("Failed to save staff member");
+      console.error("❌ Error creating staff:", error);
+      alert(error.response?.data?.error || "Failed to create staff member");
+    }
+  };
+
+  const handleUpdateStaff = async (staffData) => {
+    if (!editingStaff?.id) {
+      alert("No staff member selected for update");
+      return;
+    }
+
+    try {
+      await api.put(`/update-payroll/staff/${editingStaff.id}`, staffData);
+      alert("Staff member updated successfully!");
+      setIsAddModalOpen(false);
+      setEditingStaff(null);
+      fetchStaff();
+    } catch (error) {
+      console.error("❌ Error updating staff:", error);
+      console.error("❌ Response status:", error.response?.status);
+      console.error("❌ Response data:", error.response?.data);
+
+      if (error.response?.status === 404) {
+        alert(`Route not found. Please check the backend route.`);
+      } else if (error.response?.status === 401) {
+        alert("Your session has expired. Please login again.");
+        window.location.href = "/login";
+      } else {
+        alert(error.response?.data?.error || "Failed to update staff member");
+      }
     }
   };
 
   const exportStaff = () => {
-    const exportData = staff.map((s) => ({
+    const dataToExport = showActiveOnly ? staff : inactiveStaff;
+    const exportData = dataToExport.map((s) => ({
       "Staff ID": s.staff_number,
       Name: `${s.first_name} ${s.last_name}`,
       Category: s.category_name,
@@ -209,7 +355,223 @@ const StaffList = () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Staff");
     XLSX.writeFile(
       workbook,
-      `staff_export_${new Date().toISOString().split("T")[0]}.xlsx`,
+      `${showActiveOnly ? "active" : "inactive"}_staff_export_${new Date().toISOString().split("T")[0]}.xlsx`,
+    );
+  };
+
+  const currentStaffList = showActiveOnly ? staff : inactiveStaff;
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1);
+  };
+
+  // Category Modal Component
+  // const CategoryModal = () => (
+  //   <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+  //     <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+  //       <div className="p-6">
+  //         <div className="flex justify-between items-center mb-4">
+  //           <h3 className="text-xl font-semibold text-gray-900">
+  //             {editingCategory ? "Edit Category" : "Add New Category"}
+  //           </h3>
+  //           <button
+  //             onClick={() => {
+  //               setIsCategoryModalOpen(false);
+  //               setEditingCategory(null);
+  //               setCategoryFormData({ category_name: "", description: "" });
+  //             }}
+  //             className="text-gray-400 hover:text-gray-500"
+  //           >
+  //             ✕
+  //           </button>
+  //         </div>
+
+  //         <div className="space-y-4">
+  //           <div>
+  //             <label className="block text-sm font-medium text-gray-700 mb-1">
+  //               Category Name *
+  //             </label>
+  //             <input
+  //               type="text"
+  //               value={categoryFormData.category_name}
+  //               onChange={(e) =>
+  //                 setCategoryFormData({
+  //                   ...categoryFormData,
+  //                   category_name: e.target.value,
+  //                 })
+  //               }
+  //               placeholder="e.g., Teacher, Administrator, Accountant"
+  //               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+  //             />
+  //           </div>
+
+  //           <div>
+  //             <label className="block text-sm font-medium text-gray-700 mb-1">
+  //               Description (Optional)
+  //             </label>
+  //             <textarea
+  //               value={categoryFormData.description}
+  //               onChange={(e) =>
+  //                 setCategoryFormData({
+  //                   ...categoryFormData,
+  //                   description: e.target.value,
+  //                 })
+  //               }
+  //               placeholder="Brief description of this category..."
+  //               rows="3"
+  //               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+  //             />
+  //           </div>
+
+  //           <div className="flex justify-end space-x-3 pt-4 border-t">
+  //             <button
+  //               type="button"
+  //               onClick={() => {
+  //                 setIsCategoryModalOpen(false);
+  //                 setEditingCategory(null);
+  //                 setCategoryFormData({ category_name: "", description: "" });
+  //               }}
+  //               className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+  //             >
+  //               Cancel
+  //             </button>
+  //             <button
+  //               type="button"
+  //               onClick={
+  //                 editingCategory ? handleUpdateCategory : handleAddCategory
+  //               }
+  //               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+  //             >
+  //               {editingCategory ? "Update Category" : "Add Category"}
+  //             </button>
+  //           </div>
+  //         </div>
+  //       </div>
+  //     </div>
+  //   </div>
+  // );
+
+  const CategoryModal = () => {
+    const [localCategoryName, setLocalCategoryName] = useState("");
+    const [localDescription, setLocalDescription] = useState("");
+
+    useEffect(() => {
+      if (editingCategory) {
+        setLocalCategoryName(editingCategory.category_name || "");
+        setLocalDescription(editingCategory.description || "");
+      } else {
+        setLocalCategoryName("");
+        setLocalDescription("");
+      }
+    }, [editingCategory, isCategoryModalOpen]);
+
+    const handleSave = async () => {
+      if (!localCategoryName.trim()) {
+        alert("Please enter a category name");
+        return;
+      }
+
+      try {
+        if (editingCategory) {
+          await api.put(`/payroll/categories/${editingCategory.id}`, {
+            category_name: localCategoryName,
+            description: localDescription,
+          });
+          alert("Category updated successfully!");
+        } else {
+          await api.post("/payroll/addstaffcategory", {
+            category_name: localCategoryName,
+            description: localDescription,
+          });
+          alert("Category added successfully!");
+          fetchStaff(); // Refresh categories after adding a new one
+        }
+
+        setIsCategoryModalOpen(false);
+        setEditingCategory(null);
+        setLocalCategoryName("");
+        setLocalDescription("");
+      } catch (error) {
+        console.error("Error saving category:", error);
+        alert(error.response?.data?.error || "Failed to save category");
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-gray-900">
+                {editingCategory ? "Edit Category" : "Add New Category"}
+              </h3>
+              <button
+                onClick={() => {
+                  setIsCategoryModalOpen(false);
+                  setEditingCategory(null);
+                  setLocalCategoryName("");
+                  setLocalDescription("");
+                }}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category Name *
+                </label>
+                <input
+                  type="text"
+                  value={localCategoryName}
+                  onChange={(e) => setLocalCategoryName(e.target.value)}
+                  placeholder="e.g., Teacher, Administrator, Accountant"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={localDescription}
+                  onChange={(e) => setLocalDescription(e.target.value)}
+                  placeholder="Brief description of this category..."
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCategoryModalOpen(false);
+                    setEditingCategory(null);
+                    setLocalCategoryName("");
+                    setLocalDescription("");
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  {editingCategory ? "Update Category" : "Add Category"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -219,70 +581,156 @@ const StaffList = () => {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Staff Members</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {showActiveOnly ? "Active Staff Members" : "Inactive Staff Members"}
+          </h2>
           <p className="text-sm text-gray-600">
-            Total: {staff.length} staff members
+            Total: {currentStaffList.length} staff members
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={exportStaff}
-            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
-          >
-            <DocumentArrowDownIcon className="w-5 h-5" />
-            <span>Export</span>
-          </button>
-          <button
-            onClick={handleBulkImport}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-          >
-            <DocumentArrowUpIcon className="w-5 h-5" />
-            <span>Bulk Import</span>
-          </button>
-          <button
-            onClick={handleAddStaff}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-          >
-            <UserPlusIcon className="w-5 h-5" />
-            <span>Add Staff</span>
-          </button>
+          {showActiveOnly ? (
+            <>
+              <button
+                onClick={handleViewInactive}
+                className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg"
+              >
+                <UserMinusIcon className="w-5 h-5" />
+                <span>View Inactive Staff</span>
+              </button>
+              <button
+                onClick={exportStaff}
+                className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+              >
+                <DocumentArrowDownIcon className="w-5 h-5" />
+                <span>Export</span>
+              </button>
+              <button
+                onClick={handleBulkImport}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+              >
+                <DocumentArrowUpIcon className="w-5 h-5" />
+                <span>Bulk Import</span>
+              </button>
+              <button
+                onClick={handleAddStaff}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+              >
+                <UserPlusIcon className="w-5 h-5" />
+                <span>Add Staff</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleViewActive}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+              >
+                <UserIcon className="w-5 h-5" />
+                <span>View Active Staff</span>
+              </button>
+              <button
+                onClick={exportStaff}
+                className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+              >
+                <DocumentArrowDownIcon className="w-5 h-5" />
+                <span>Export</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Search Bar */}
+      {/* Search Bar with Manage Categories Button */}
       <div className="mb-6">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search staff by name or staff number..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-            <svg
-              className="w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="Search staff by name or staff number..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={searchTerm}
+              onChange={(e) => {
+                // This should work - update searchTerm immediately
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+            <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+              <svg
+                className="w-5 h-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+            {searchTerm && (
+              <button
+                onClick={() => {
+                  setSearchTerm("");
+                  setCurrentPage(1);
+                }}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
+          <button
+            onClick={() => {
+              setEditingCategory(null);
+              setCategoryFormData({ category_name: "", description: "" });
+              setIsCategoryModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg whitespace-nowrap"
+          >
+            <TagIcon className="w-5 h-5" />
+            <span>Add Categories</span>
+          </button>
         </div>
+        {searchTerm && (
+          <div className="mt-1 text-sm text-gray-500 flex items-center gap-2">
+            <span>
+              Searching for: <span className="font-medium">{searchTerm}</span>
+            </span>
+            {debouncedSearchTerm !== searchTerm && (
+              <span className="text-gray-400">(typing...)</span>
+            )}
+            {debouncedSearchTerm === searchTerm && debouncedSearchTerm && (
+              <span className="text-green-600">✓</span>
+            )}
+          </div>
+        )}
       </div>
-
       {/* Staff Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {staff.map((staffMember) => (
+        {currentStaffList.map((staffMember) => (
           <div
             key={staffMember.id}
-            className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow"
+            className={`bg-white border rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow ${
+              !staffMember.is_active
+                ? "border-red-200 bg-red-50/30"
+                : "border-gray-200"
+            }`}
           >
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -295,22 +743,45 @@ const StaffList = () => {
                 <p className="text-sm text-blue-600 font-medium mt-1">
                   {staffMember.category_name}
                 </p>
+                {!staffMember.is_active && (
+                  <span className="inline-flex items-center mt-2 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                    <UserMinusIcon className="w-3 h-3 mr-1" />
+                    Inactive
+                  </span>
+                )}
               </div>
               <div className="flex space-x-2">
-                <button
-                  onClick={() => handleEditStaff(staffMember)}
-                  className="text-blue-600 hover:text-blue-900"
-                  title="Edit"
-                >
-                  <PencilIcon className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => handleDeleteStaff(staffMember.id)}
-                  className="text-red-600 hover:text-red-900"
-                  title="Delete"
-                >
-                  <TrashIcon className="w-5 h-5" />
-                </button>
+                {staffMember.is_active ? (
+                  <>
+                    <button
+                      onClick={() => handleEditStaff(staffMember)}
+                      className="text-blue-600 hover:text-blue-900"
+                      title="Edit"
+                    >
+                      <PencilIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteStaff(staffMember)}
+                      className="text-red-600 hover:text-red-900"
+                      title={
+                        staffMember.has_payroll_history
+                          ? "Deactivate"
+                          : "Delete"
+                      }
+                    >
+                      <TrashIcon className="w-5 h-5" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => handleActivateStaff(staffMember)}
+                    className="text-green-600 hover:text-green-900"
+                    title="Activate Staff"
+                  >
+                    <ArrowPathIcon className="w-5 h-5" />
+                    <span className="sr-only">Activate</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -361,7 +832,6 @@ const StaffList = () => {
           </div>
         ))}
       </div>
-
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="mt-8 flex justify-center">
@@ -400,11 +870,13 @@ const StaffList = () => {
           </div>
         </div>
       )}
-
       {/* Add/Edit Staff Modal */}
       <Modal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingStaff(null);
+        }}
         title={editingStaff ? "Edit Staff Member" : "Add New Staff"}
         size="large"
       >
@@ -412,10 +884,12 @@ const StaffList = () => {
           staff={editingStaff}
           categories={categories}
           onSave={handleSaveStaff}
-          onCancel={() => setIsAddModalOpen(false)}
+          onCancel={() => {
+            setIsAddModalOpen(false);
+            setEditingStaff(null);
+          }}
         />
       </Modal>
-
       {/* Bulk Import Modal */}
       <Modal
         isOpen={isBulkImportModalOpen}
@@ -429,29 +903,157 @@ const StaffList = () => {
           onCancel={() => setIsBulkImportModalOpen(false)}
         />
       </Modal>
+      {/* Inactive Staff List Modal */}
+      <Modal
+        isOpen={isInactiveModalOpen}
+        onClose={() => {
+          setIsInactiveModalOpen(false);
+          setShowActiveOnly(true);
+          fetchStaff();
+        }}
+        title="Inactive Staff Members"
+        size="large"
+      >
+        <div className="space-y-4">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <p className="text-sm text-yellow-800">
+              These staff members have been deactivated. They will not appear in
+              active staff lists or payroll processing. You can reactivate them
+              at any time.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+            {inactiveStaff.map((staffMember) => (
+              <div
+                key={staffMember.id}
+                className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="font-semibold text-gray-900">
+                      {staffMember.first_name} {staffMember.last_name}
+                    </h4>
+                    <p className="text-sm text-gray-500">
+                      {staffMember.staff_number}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {staffMember.category_name}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleActivateStaff(staffMember);
+                      setIsInactiveModalOpen(false);
+                    }}
+                    className="flex items-center gap-1 px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
+                  >
+                    <ArrowPathIcon className="w-4 h-4" />
+                    Activate
+                  </button>
+                </div>
+                <div className="mt-2 text-sm text-gray-500">
+                  <div>📞 {staffMember.contact_phone || "No phone"}</div>
+                  {staffMember.bank_name && (
+                    <div>🏦 {staffMember.bank_name}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {inactiveStaff.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No inactive staff members found
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4 border-t">
+            <button
+              onClick={() => {
+                setIsInactiveModalOpen(false);
+                setShowActiveOnly(true);
+                fetchStaff();
+              }}
+              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+      {/* Category Modal */}
+      {isCategoryModalOpen && <CategoryModal />}
     </div>
   );
 };
 
-// Staff Form Component with Category Dropdown
+// FIXED: Staff Form Component with proper useEffect
 const StaffForm = ({ staff, categories, onSave, onCancel }) => {
-  const [formData, setFormData] = useState(
-    staff || {
-      staff_number: "",
-      first_name: "",
-      last_name: "",
-      category_id: categories[0]?.id || "",
-      employment_date: new Date().toISOString().split("T")[0],
-      contact_phone: "",
-      bank_name: "",
-      bank_account_number: "",
-      bank_branch: "",
-      mobile_money_number: "",
-      mobile_money_provider: "MTN",
-      emergency_contact: "",
-      emergency_phone: "",
-    },
-  );
+  const [formData, setFormData] = useState({
+    staff_number: "",
+    first_name: "",
+    last_name: "",
+    category_id: "",
+    employment_date: new Date().toISOString().split("T")[0],
+    contact_phone: "",
+    bank_name: "",
+    bank_account_number: "",
+    bank_branch: "",
+    mobile_money_number: "",
+    mobile_money_provider: "MTN",
+    emergency_contact: "",
+    emergency_phone: "",
+  });
+
+  // IMPORTANT: Update form data when staff prop changes (for editing)
+  useEffect(() => {
+    if (staff) {
+      const formattedData = {
+        staff_number: staff.staff_number || "",
+        first_name: staff.first_name || "",
+        last_name: staff.last_name || "",
+        category_id: staff.category_id || "",
+        employment_date: staff.employment_date
+          ? staff.employment_date.split("T")[0]
+          : new Date().toISOString().split("T")[0],
+        contact_phone: staff.contact_phone || "",
+        bank_name: staff.bank_name || "",
+        bank_account_number: staff.bank_account_number || "",
+        bank_branch: staff.bank_branch || "",
+        mobile_money_number: staff.mobile_money_number || "",
+        mobile_money_provider: staff.mobile_money_provider || "MTN",
+        emergency_contact: staff.emergency_contact || "",
+        emergency_phone: staff.emergency_phone || "",
+      };
+      setFormData(formattedData);
+    } else {
+      // Reset form when adding new staff
+      setFormData({
+        staff_number: "",
+        first_name: "",
+        last_name: "",
+        category_id: categories[0]?.id || "",
+        employment_date: new Date().toISOString().split("T")[0],
+        contact_phone: "",
+        bank_name: "",
+        bank_account_number: "",
+        bank_branch: "",
+        mobile_money_number: "",
+        mobile_money_provider: "MTN",
+        emergency_contact: "",
+        emergency_phone: "",
+      });
+    }
+  }, [staff, categories]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -470,11 +1072,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
           </label>
           <input
             type="text"
+            name="staff_number"
             value={formData.staff_number}
-            onChange={(e) =>
-              setFormData({ ...formData, staff_number: e.target.value })
-            }
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
             required
             placeholder="EMP001"
           />
@@ -485,11 +1086,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
             Category *
           </label>
           <select
+            name="category_id"
             value={formData.category_id}
-            onChange={(e) =>
-              setFormData({ ...formData, category_id: e.target.value })
-            }
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
             required
           >
             <option value="">Select Category</option>
@@ -507,11 +1107,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
           </label>
           <input
             type="text"
+            name="first_name"
             value={formData.first_name}
-            onChange={(e) =>
-              setFormData({ ...formData, first_name: e.target.value })
-            }
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
@@ -522,11 +1121,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
           </label>
           <input
             type="text"
+            name="last_name"
             value={formData.last_name}
-            onChange={(e) =>
-              setFormData({ ...formData, last_name: e.target.value })
-            }
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
@@ -537,11 +1135,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
           </label>
           <input
             type="date"
+            name="employment_date"
             value={formData.employment_date}
-            onChange={(e) =>
-              setFormData({ ...formData, employment_date: e.target.value })
-            }
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
@@ -552,17 +1149,17 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
           </label>
           <input
             type="tel"
+            name="contact_phone"
             value={formData.contact_phone}
-            onChange={(e) =>
-              setFormData({ ...formData, contact_phone: e.target.value })
-            }
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
             required
             placeholder="0551234567"
           />
         </div>
       </div>
 
+      {/* Bank Details Section */}
       <div className="border-t pt-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">
           Bank Details
@@ -574,11 +1171,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
             </label>
             <input
               type="text"
+              name="bank_name"
               value={formData.bank_name}
-              onChange={(e) =>
-                setFormData({ ...formData, bank_name: e.target.value })
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
               placeholder="GCB Bank"
             />
           </div>
@@ -589,14 +1185,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
             </label>
             <input
               type="text"
+              name="bank_account_number"
               value={formData.bank_account_number}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  bank_account_number: e.target.value,
-                })
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
               placeholder="1234567890"
             />
           </div>
@@ -607,17 +1199,17 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
             </label>
             <input
               type="text"
+              name="bank_branch"
               value={formData.bank_branch}
-              onChange={(e) =>
-                setFormData({ ...formData, bank_branch: e.target.value })
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
               placeholder="Accra Main"
             />
           </div>
         </div>
       </div>
 
+      {/* Mobile Money Section */}
       <div className="border-t pt-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">
           Mobile Money
@@ -629,14 +1221,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
             </label>
             <input
               type="text"
+              name="mobile_money_number"
               value={formData.mobile_money_number}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  mobile_money_number: e.target.value,
-                })
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
               placeholder="0551234567"
             />
           </div>
@@ -646,14 +1234,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
               Mobile Money Provider
             </label>
             <select
+              name="mobile_money_provider"
               value={formData.mobile_money_provider}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  mobile_money_provider: e.target.value,
-                })
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
             >
               <option value="MTN">MTN</option>
               <option value="Vodafone">Vodafone</option>
@@ -663,6 +1247,7 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
         </div>
       </div>
 
+      {/* Emergency Contact Section */}
       <div className="border-t pt-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">
           Emergency Contact
@@ -674,11 +1259,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
             </label>
             <input
               type="text"
+              name="emergency_contact"
               value={formData.emergency_contact}
-              onChange={(e) =>
-                setFormData({ ...formData, emergency_contact: e.target.value })
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
             />
           </div>
 
@@ -688,11 +1272,10 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
             </label>
             <input
               type="tel"
+              name="emergency_phone"
               value={formData.emergency_phone}
-              onChange={(e) =>
-                setFormData({ ...formData, emergency_phone: e.target.value })
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
             />
           </div>
         </div>
@@ -719,8 +1302,6 @@ const StaffForm = ({ staff, categories, onSave, onCancel }) => {
 
 // Bulk Import Form Component
 const BulkImportForm = ({ onDownloadTemplate, onFileUpload, onCancel }) => {
-  const [uploadStatus, setUploadStatus] = useState("");
-
   return (
     <div className="space-y-6">
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -770,18 +1351,6 @@ const BulkImportForm = ({ onDownloadTemplate, onFileUpload, onCancel }) => {
           </button>
         </div>
       </div>
-
-      {uploadStatus && (
-        <div
-          className={`p-3 rounded-lg ${
-            uploadStatus.includes("Success")
-              ? "bg-green-50 text-green-700"
-              : "bg-red-50 text-red-700"
-          }`}
-        >
-          {uploadStatus}
-        </div>
-      )}
     </div>
   );
 };

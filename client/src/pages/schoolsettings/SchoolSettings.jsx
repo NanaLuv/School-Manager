@@ -171,9 +171,7 @@ const SchoolSettings = () => {
           ...prev,
           logo_filename: response.data.logo_filename,
         }));
-        setLogoPreview(
-          `http://localhost:3001/uploads/school-logo/${response.data.logo_filename}`,
-        );
+        setLogoPreview(`/uploads/school-logo/${response.data.logo_filename}`);
       }
 
       setMessage("Settings saved successfully!");

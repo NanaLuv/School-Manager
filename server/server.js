@@ -25,18 +25,18 @@ app.get("/test", (req, res) => {
   res.json({ message: "CORS working" });
 });
 app.use(express.json());
+
 app.use("/schmgt", router);
 app.use("/uploads", express.static("uploads"));
 app.use("/uploads/school-logo", express.static("uploads/school-logo"));
 
 // // For production, serve static files if needed
-// // if (process.env.NODE_ENV === "production") {
-// //   // app.use(express.static(path.join(__dirname, "../client/build")));
-// //   app.get("*", (req, res) => {
-// //     // res.sendFile(path.join(__dirname, "../client/build", "index.html"));
-// //   });
-// // }
+app.use(express.static(path.join(__dirname, "../client/build")));
 
+// Catch-all: serve React app for any non-API route
+app.get("/{*path}", (req, res) => {
+  res.sendFile(path.join(__dirname, "../client/build", "index.html"));
+});
 const port = process.env.PORT || process.env.SERVER_PORT || 5000;
 
 async function testConnection() {

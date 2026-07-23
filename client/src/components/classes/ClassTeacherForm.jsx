@@ -1,7 +1,6 @@
 // components/classes/ClassTeacherForm.js
 import React, { useState, useEffect } from "react";
-import axios from "axios";
-
+import api from "../axiosconfig/axiosConfig";
 const ClassTeacherForm = ({ assignment, onSave, onCancel }) => {
   const [formData, setFormData] = useState({
     class_id: "",
@@ -31,13 +30,12 @@ const ClassTeacherForm = ({ assignment, onSave, onCancel }) => {
     setLoading(true);
     try {
       const [classesResponse, teachersResponse] = await Promise.all([
-        axios.get("http://localhost:3001/schmgt/getclasses"),
-        axios.get("http://localhost:3001/schmgt/getavailableteachers"),
+        api.get("/getclasses"),
+        api.get("/getavailableteachers"),
       ]);
 
       setClasses(classesResponse.data);
       setAvailableTeachers(teachersResponse.data);
-      console.log("fetched teachers:", teachersResponse.data)
     } catch (error) {
       console.error("Error fetching form data:", error);
     }

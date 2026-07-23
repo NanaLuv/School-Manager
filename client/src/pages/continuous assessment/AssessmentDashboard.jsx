@@ -147,7 +147,7 @@ const AssessmentDashboard = () => {
             </p>
           </div>
 
-          <div className="flex space-x-2 print:hidden">
+          {/* <div className="flex space-x-2 print:hidden">
             <button
               onClick={handleExport}
               className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
@@ -161,7 +161,7 @@ const AssessmentDashboard = () => {
               <PrinterIcon className="w-4 h-4" />
               <span>Print</span>
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
 

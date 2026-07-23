@@ -46,6 +46,7 @@ import ProfitLoss from "./pages/profit and loss/ProfitLoss";
 import UserActivityLogs from "./pages/user activity logs/userActivityLogs";
 import EmailLogs from "./pages/emaillogs/EmailLogs";
 import AssessmentDashboard from "./pages/continuous assessment/AssessmentDashboard";
+import BillAnalysisDashboard from "./pages/fees/BillOverview";
 
 function App() {
   return (
@@ -96,7 +97,13 @@ const ProtectedAppRoutes = () => {
         path="profile"
         element={
           <ProtectedRoute
-            requiredRoles={["admin", "teacher", "student", "accountant"]}
+            requiredRoles={[
+              "admin",
+              "teacher",
+              "student",
+              "accountant",
+              "academics",
+            ]}
           >
             <Layout>
               <Profile />
@@ -118,7 +125,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/subjects/list"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <SubjectList />
             </Layout>
@@ -129,7 +136,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/teachers/list"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <TeacherList />
             </Layout>
@@ -151,7 +158,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/subjects-assignments"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <SubjectAssignments />
             </Layout>
@@ -162,7 +169,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/classes/list"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <ClassesList />
             </Layout>
@@ -173,7 +180,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/classes/:id"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <ClassDetails />
             </Layout>
@@ -184,7 +191,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/classes/assignments"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <ClassAssignments />
             </Layout>
@@ -195,7 +202,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/students-lists"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <StudentsList />
             </Layout>
@@ -206,7 +213,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/classes/teachers"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <ClassTeachersList />
             </Layout>
@@ -217,7 +224,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/grading-scales"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <GradingScalesList />
             </Layout>
@@ -228,7 +235,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/grades"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <ClassesForGrades />
             </Layout>
@@ -239,7 +246,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/grades/class/:classId"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <ClassGrades />
             </Layout>
@@ -250,7 +257,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/report-cards"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <ReportCardsList />
             </Layout>
@@ -261,7 +268,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/report-cards/generate"
         element={
-          <ProtectedRoute requiredRoles={["admin"]}>
+          <ProtectedRoute requiredRoles={["admin", "academics"]}>
             <Layout>
               <GenerateReportCards />
             </Layout>
@@ -272,7 +279,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/report-cards/view/:id"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <ViewReportCard />
             </Layout>
@@ -283,7 +290,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/attendance"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <AttendanceList />
             </Layout>
@@ -294,7 +301,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/attendance/take"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <TakeAttendance />
             </Layout>
@@ -305,7 +312,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/attendance/reports"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <AttendanceReports />
             </Layout>
@@ -316,7 +323,7 @@ const ProtectedAppRoutes = () => {
       <Route
         path="/academics/assessment"
         element={
-          <ProtectedRoute requiredRoles={["admin", "teacher"]}>
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
             <Layout>
               <AssessmentDashboard />
             </Layout>
@@ -407,6 +414,16 @@ const ProtectedAppRoutes = () => {
           <ProtectedRoute requiredRoles={["admin", "accountant"]}>
             <Layout>
               <FinancialRecords />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/finance/bill-overview"
+        element={
+          <ProtectedRoute requiredRoles={["admin", "accountant"]}>
+            <Layout>
+              <BillAnalysisDashboard />
             </Layout>
           </ProtectedRoute>
         }

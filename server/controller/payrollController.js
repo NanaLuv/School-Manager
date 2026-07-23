@@ -3,8 +3,7 @@ const pool = require("../db");
 const { jsPDF } = require("jspdf");
 const { autoTable } = require("jspdf-autotable");
 
-
-// Calculate Ghana tax - 
+// Calculate Ghana tax -
 const calculateGHATax = (annualIncome) => {
   // Convert annual income to monthly for calculation
   const monthlyIncome = annualIncome / 12;
@@ -78,6 +77,23 @@ const calculateGHATaxWithRelief = (monthlyIncome) => {
   return Math.max(0, monthlyTax - monthlyRelief);
 };
 
+// post staff_category
+const addStaffCategory = async (req, res) => {
+  try {
+    const { category_name, description } = req.body;
+
+    const [result] = await pool.query(
+      "INSERT INTO staff_categories (category_name, description) VALUES (?, ?)",
+      [category_name, description]
+    );
+
+    res.status(201).json({ id: result.insertId, category_name, description });
+  } catch (error) {
+    console.error("Error adding staff category:", error);
+    res.status(500).json({ error: "Failed to add staff category" });
+  }
+};
+
 // GET /api/payroll/staff - List all staff with pagination
 const getStaff = async (req, res) => {
   try {
@@ -98,7 +114,7 @@ const getStaff = async (req, res) => {
 
     if (search) {
       whereConditions.push(
-        "(se.first_name LIKE ? OR se.last_name LIKE ? OR se.staff_number LIKE ?)"
+        "(se.first_name LIKE ? OR se.last_name LIKE ? OR se.staff_number LIKE ?)",
       );
       queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
@@ -117,33 +133,34 @@ const getStaff = async (req, res) => {
     // Get total count
     const [countResult] = await pool.query(
       `SELECT COUNT(*) as total FROM staff_employees se WHERE ${whereConditions.join(
-        " AND "
+        " AND ",
       )}`,
-      queryParams
+      queryParams,
     );
 
     const total = countResult[0].total;
     const totalPages = Math.ceil(total / limitNum);
 
-    // Get paginated data
+    // Get paginated data with payroll history check
     queryParams.push(limitNum, offset);
     const [staff] = await pool.query(
       `SELECT 
         se.*,
         sc.category_name,
         CONCAT(se.first_name, ' ', se.last_name) as full_name,
-        DATEDIFF(CURDATE(), se.employment_date) as days_employed
+        DATEDIFF(CURDATE(), se.employment_date) as days_employed,
+        EXISTS(SELECT 1 FROM payroll_entries WHERE staff_id = se.id) as has_payroll_history
        FROM staff_employees se
        LEFT JOIN staff_categories sc ON se.category_id = sc.id
        WHERE ${whereConditions.join(" AND ")}
        ORDER BY se.first_name, se.last_name
        LIMIT ? OFFSET ?`,
-      queryParams
+      queryParams,
     );
 
     // Get categories for filter
     const [categories] = await pool.query(
-      "SELECT * FROM staff_categories ORDER BY category_name"
+      "SELECT * FROM staff_categories ORDER BY category_name",
     );
 
     res.json({
@@ -190,7 +207,7 @@ const addStaff = async (req, res) => {
     // Check if staff number exists
     const [existing] = await connection.query(
       "SELECT id FROM staff_employees WHERE staff_number = ?",
-      [staff_number]
+      [staff_number],
     );
 
     if (existing.length > 0) {
@@ -219,7 +236,7 @@ const addStaff = async (req, res) => {
         contact_phone,
         emergency_contact,
         emergency_phone,
-      ]
+      ],
     );
 
     await connection.commit();
@@ -230,16 +247,205 @@ const addStaff = async (req, res) => {
        FROM staff_employees se
        LEFT JOIN staff_categories sc ON se.category_id = sc.id
        WHERE se.id = ?`,
-      [result.insertId]
+      [result.insertId],
     );
 
-    res.status(201).json(newStaff[0]);
+    const newstaff = res.status(201).json(newStaff[0]);
   } catch (error) {
     await connection.rollback();
     console.error("Error adding staff:", error);
     res.status(500).json({ error: "Failed to add staff" });
   } finally {
     connection.release();
+  }
+};
+
+// PUT /api/payroll/staff/:id - Update staff member
+const updateStaff = async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const { id } = req.params;
+    const {
+      staff_number,
+      first_name,
+      last_name,
+      category_id,
+      employment_date,
+      bank_name,
+      bank_account_number,
+      bank_branch,
+      mobile_money_number,
+      mobile_money_provider,
+      contact_phone,
+      emergency_contact,
+      emergency_phone,
+    } = req.body;
+
+    // Check if staff exists
+    const [existing] = await connection.query(
+      "SELECT id FROM staff_employees WHERE id = ?",
+      [id],
+    );
+
+    if (existing.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: "Staff member not found" });
+    }
+
+    // Update staff
+    await connection.query(
+      `UPDATE staff_employees SET
+        staff_number = ?,
+        first_name = ?,
+        last_name = ?,
+        category_id = ?,
+        employment_date = ?,
+        bank_name = ?,
+        bank_account_number = ?,
+        bank_branch = ?,
+        mobile_money_number = ?,
+        mobile_money_provider = ?,
+        contact_phone = ?,
+        emergency_contact = ?,
+        emergency_phone = ?
+       WHERE id = ?`,
+      [
+        staff_number,
+        first_name,
+        last_name,
+        category_id,
+        employment_date,
+        bank_name,
+        bank_account_number,
+        bank_branch,
+        mobile_money_number,
+        mobile_money_provider,
+        contact_phone,
+        emergency_contact,
+        emergency_phone,
+        id,
+      ],
+    );
+
+    await connection.commit();
+
+    // Return updated staff
+    const [updatedStaff] = await connection.query(
+      `SELECT se.*, sc.category_name 
+       FROM staff_employees se
+       LEFT JOIN staff_categories sc ON se.category_id = sc.id
+       WHERE se.id = ?`,
+      [id],
+    );
+
+    res.json(updatedStaff[0]);
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error updating staff:", error);
+    res.status(500).json({ error: "Failed to update staff" });
+  } finally {
+    connection.release();
+  }
+};
+
+// DELETE /api/payroll/staff/:id - Delete staff member
+const deleteStaff = async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const { id } = req.params;
+
+    // Check if staff exists
+    const [staff] = await connection.query(
+      "SELECT id, staff_number FROM staff_employees WHERE id = ?",
+      [id],
+    );
+
+    if (staff.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: "Staff member not found" });
+    }
+
+    // Check if staff has any payroll entries
+    const [payrollEntries] = await connection.query(
+      "SELECT id FROM payroll_entries WHERE staff_id = ? LIMIT 1",
+      [id],
+    );
+
+    if (payrollEntries.length > 0) {
+      // Option 1: Soft delete (set inactive instead of deleting)
+      await connection.query(
+        "UPDATE staff_employees SET is_active = FALSE WHERE id = ?",
+        [id],
+      );
+
+      await connection.commit();
+
+      return res.json({
+        success: true,
+        message:
+          "Staff member deactivated instead of deleted (has payroll history)",
+        deactivated: true,
+      });
+    }
+
+    // No payroll history, can delete permanently
+    await connection.query("DELETE FROM staff_employees WHERE id = ?", [id]);
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: "Staff member deleted successfully",
+      deleted: true,
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error deleting staff:", error);
+    res.status(500).json({
+      error: "Failed to delete staff member",
+      details: error.message,
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// PUT /api/payroll/staff/:id/deactivate - Soft delete staff
+const deactivateStaff = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    const [staff] = await pool.query(
+      "SELECT id FROM staff_employees WHERE id = ?",
+      [id],
+    );
+
+    if (staff.length === 0) {
+      return res.status(404).json({ error: "Staff member not found" });
+    }
+
+    await pool.query("UPDATE staff_employees SET is_active = ? WHERE id = ?", [
+      is_active === false ? false : true,
+      id,
+    ]);
+
+    res.json({
+      success: true,
+      message:
+        is_active === false
+          ? "Staff member deactivated"
+          : "Staff member activated",
+    });
+  } catch (error) {
+    console.error("Error updating staff status:", error);
+    res.status(500).json({ error: "Failed to update staff status" });
   }
 };
 
@@ -278,6 +484,27 @@ const getPayrollPeriods = async (req, res) => {
   }
 };
 
+// GET /api/payroll/period/:periodId - Get single period data
+const getPayrollPeriodById = async (req, res) => {
+  try {
+    const { periodId } = req.params;
+
+    const [periods] = await pool.query(
+      `SELECT * FROM payroll_periods WHERE id = ?`,
+      [periodId],
+    );
+
+    if (periods.length === 0) {
+      return res.status(404).json({ error: "Period not found" });
+    }
+
+    res.json(periods[0]);
+  } catch (error) {
+    console.error("Error fetching period:", error);
+    res.status(500).json({ error: "Failed to fetch period" });
+  }
+};
+
 // Helper function to get month name
 const getMonthName = (monthNumber) => {
   const months = [
@@ -305,7 +532,7 @@ const createPayrollPeriod = async (req, res) => {
     // Check if period exists
     const [existing] = await pool.query(
       "SELECT id FROM payroll_periods WHERE period_year = ? AND period_month = ?",
-      [period_year, period_month]
+      [period_year, period_month],
     );
 
     if (existing.length > 0) {
@@ -315,12 +542,12 @@ const createPayrollPeriod = async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO payroll_periods (period_year, period_month, start_date, end_date)
        VALUES (?, ?, ?, ?)`,
-      [period_year, period_month, start_date, end_date]
+      [period_year, period_month, start_date, end_date],
     );
 
     const [newPeriod] = await pool.query(
       "SELECT * FROM payroll_periods WHERE id = ?",
-      [result.insertId]
+      [result.insertId],
     );
 
     res.status(201).json(newPeriod[0]);
@@ -329,7 +556,6 @@ const createPayrollPeriod = async (req, res) => {
     res.status(500).json({ error: "Failed to create payroll period" });
   }
 };
-
 
 // POST /api/payroll/save-entry - Save payroll entry
 const calculatePayroll = async (req, res) => {
@@ -352,7 +578,7 @@ const calculatePayroll = async (req, res) => {
     // Get staff details
     const [staff] = await pool.query(
       "SELECT * FROM staff_employees WHERE id = ?",
-      [staff_id]
+      [staff_id],
     );
 
     if (staff.length === 0) {
@@ -434,7 +660,7 @@ const savePayrollEntry = async (req, res) => {
     // Check if entry exists
     const [existing] = await connection.query(
       "SELECT id FROM payroll_entries WHERE staff_id = ? AND period_id = ?",
-      [staff_id, period_id]
+      [staff_id, period_id],
     );
 
     let result;
@@ -471,7 +697,7 @@ const savePayrollEntry = async (req, res) => {
           other_deduction,
           deduction_description,
           existing[0].id,
-        ]
+        ],
       );
     } else {
       // Create new
@@ -498,7 +724,7 @@ const savePayrollEntry = async (req, res) => {
           loan_deduction,
           other_deduction,
           deduction_description,
-        ]
+        ],
       );
     }
 
@@ -515,7 +741,7 @@ const savePayrollEntry = async (req, res) => {
        LEFT JOIN staff_categories sc ON se.category_id = sc.id
        LEFT JOIN payroll_periods pp ON pe.period_id = pp.id
        WHERE pe.staff_id = ? AND pe.period_id = ?`,
-      [staff_id, period_id]
+      [staff_id, period_id],
     );
 
     res.json({
@@ -552,13 +778,13 @@ const getPayrollEntries = async (req, res) => {
        LEFT JOIN staff_categories sc ON se.category_id = sc.id
        WHERE pe.period_id = ?
        ORDER BY se.first_name, se.last_name`,
-      [period_id]
+      [period_id],
     );
 
     // Get period details
     const [period] = await pool.query(
       "SELECT * FROM payroll_periods WHERE id = ?",
-      [period_id]
+      [period_id],
     );
 
     res.json({
@@ -568,19 +794,19 @@ const getPayrollEntries = async (req, res) => {
         staff_count: entries.length,
         total_gross: entries.reduce(
           (sum, e) => sum + parseFloat(e.total_gross),
-          0
+          0,
         ),
         total_deductions: entries.reduce(
           (sum, e) => sum + parseFloat(e.total_deductions),
-          0
+          0,
         ),
         total_net: entries.reduce(
           (sum, e) => sum + parseFloat(e.net_salary),
-          0
+          0,
         ),
         total_ssnit_employer: entries.reduce(
           (sum, e) => sum + parseFloat(e.ssnit_employer),
-          0
+          0,
         ),
       },
     });
@@ -606,7 +832,7 @@ const approvePayrollEntry = async (req, res) => {
        payment_method = ?,
        payment_reference = ?
        WHERE id = ?`,
-      [approved_by, payment_date, payment_method, payment_reference, id]
+      [approved_by, payment_date, payment_method, payment_reference, id],
     );
 
     res.json({
@@ -632,7 +858,7 @@ const processPayrollPeriod = async (req, res) => {
     // Get all entries for this period
     const [entries] = await connection.query(
       "SELECT * FROM payroll_entries WHERE period_id = ?",
-      [period_id]
+      [period_id],
     );
 
     if (entries.length === 0) {
@@ -650,7 +876,7 @@ const processPayrollPeriod = async (req, res) => {
         acc.total_net += parseFloat(entry.net_salary) || 0;
         return acc;
       },
-      { total_gross: 0, total_deductions: 0, total_net: 0 }
+      { total_gross: 0, total_deductions: 0, total_net: 0 },
     );
 
     // Update period
@@ -669,7 +895,7 @@ const processPayrollPeriod = async (req, res) => {
         totals.total_deductions,
         totals.total_net,
         period_id,
-      ]
+      ],
     );
 
     await connection.commit();
@@ -715,7 +941,7 @@ const generatePayslipPDF = async (req, res) => {
        LEFT JOIN payroll_periods pp ON pe.period_id = pp.id
        LEFT JOIN users u ON pe.approved_by = u.id
        WHERE pe.id = ?`,
-      [id]
+      [id],
     );
 
     if (entries.length === 0) {
@@ -726,7 +952,7 @@ const generatePayslipPDF = async (req, res) => {
 
     // Get school settings
     const [schoolSettings] = await pool.query(
-      "SELECT * FROM school_settings ORDER BY id DESC LIMIT 1"
+      "SELECT * FROM school_settings ORDER BY id DESC LIMIT 1",
     );
 
     const school = schoolSettings[0] || {
@@ -782,13 +1008,13 @@ const generatePayslipPDF = async (req, res) => {
       `Pay Period: ${periodMonth} ${entry.period_year}`,
       pageWidth - 20,
       30,
-      { align: "right" }
+      { align: "right" },
     );
     doc.text(
       `Payment Date: ${new Date(entry.payment_date).toLocaleDateString() || "Pending"}`,
       pageWidth - 20,
       35,
-      { align: "right" }
+      { align: "right" },
     );
 
     // Employee info
@@ -861,7 +1087,7 @@ const generatePayslipPDF = async (req, res) => {
       `Ghc ${parseFloat(entry.total_gross).toFixed(2)}`,
       pageWidth - 25,
       yPosition,
-      { align: "right" }
+      { align: "right" },
     );
 
     yPosition += 15;
@@ -906,7 +1132,7 @@ const generatePayslipPDF = async (req, res) => {
       `Ghc ${parseFloat(entry.total_deductions).toFixed(2)}`,
       pageWidth - 25,
       yPosition,
-      { align: "right" }
+      { align: "right" },
     );
 
     yPosition += 15;
@@ -923,7 +1149,7 @@ const generatePayslipPDF = async (req, res) => {
       `Ghc ${parseFloat(entry.net_salary).toFixed(2)}`,
       pageWidth - 25,
       yPosition + 8,
-      { align: "right" }
+      { align: "right" },
     );
 
     yPosition += 25;
@@ -940,7 +1166,7 @@ const generatePayslipPDF = async (req, res) => {
         `Approved by: ${entry.approved_by_name}`,
         pageWidth / 2,
         yPosition + 5,
-        { align: "center" }
+        { align: "center" },
       );
     }
 
@@ -948,7 +1174,7 @@ const generatePayslipPDF = async (req, res) => {
       `Generated: ${new Date().toLocaleDateString()}`,
       pageWidth / 2,
       yPosition + 10,
-      { align: "center" }
+      { align: "center" },
     );
 
     // Convert to buffer and send
@@ -957,7 +1183,7 @@ const generatePayslipPDF = async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="payslip-${entry.staff_number}-${entry.period_month}-${entry.period_year}.pdf"`
+      `inline; filename="payslip-${entry.staff_number}-${entry.period_month}-${entry.period_year}.pdf"`,
     );
     res.send(pdfBuffer);
   } catch (error) {
@@ -983,7 +1209,7 @@ const generatePayrollReport = async (req, res) => {
        LEFT JOIN staff_categories sc ON se.category_id = sc.id
        WHERE pe.period_id = ?
        ORDER BY se.first_name, se.last_name`,
-      [period_id]
+      [period_id],
     );
 
     if (entries.length === 0) {
@@ -995,12 +1221,12 @@ const generatePayrollReport = async (req, res) => {
     // Get period details
     const [period] = await pool.query(
       "SELECT * FROM payroll_periods WHERE id = ?",
-      [period_id]
+      [period_id],
     );
 
     // Get school settings
     const [schoolSettings] = await pool.query(
-      "SELECT * FROM school_settings ORDER BY id DESC LIMIT 1"
+      "SELECT * FROM school_settings ORDER BY id DESC LIMIT 1",
     );
 
     const school = schoolSettings[0] || {
@@ -1101,7 +1327,7 @@ const generatePayrollReport = async (req, res) => {
         total_deductions: 0,
         total_net: 0,
         total_ssnit_employer: 0,
-      }
+      },
     );
 
     doc.setFontSize(11);
@@ -1117,7 +1343,7 @@ const generatePayrollReport = async (req, res) => {
       `Total Deductions: Ghc ${totals.total_deductions.toFixed(2)}`,
       `Total Net Pay: Ghc ${totals.total_net.toFixed(2)}`,
       `Total SSNIT Employer (13%): Ghc ${totals.total_ssnit_employer.toFixed(
-        2
+        2,
       )}`,
     ];
 
@@ -1132,7 +1358,7 @@ const generatePayrollReport = async (req, res) => {
       `Generated on ${new Date().toLocaleDateString()}`,
       pageWidth / 2,
       pageHeight - 10,
-      { align: "center" }
+      { align: "center" },
     );
 
     const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
@@ -1140,7 +1366,7 @@ const generatePayrollReport = async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="payroll-report-${period[0].period_month}-${period[0].period_year}.pdf"`
+      `attachment; filename="payroll-report-${period[0].period_month}-${period[0].period_year}.pdf"`,
     );
     res.send(pdfBuffer);
   } catch (error) {
@@ -1163,7 +1389,7 @@ const getPreviousPayrollEntry = async (req, res) => {
        AND pe.is_approved = TRUE
        ORDER BY pp.period_year DESC, pp.period_month DESC
        LIMIT 1`,
-      [staff_id]
+      [staff_id],
     );
 
     if (entries.length === 0) {
@@ -1180,45 +1406,178 @@ const getPreviousPayrollEntry = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch previous payroll" });
   }
 };
+// const copyEntriesFromPreviousPeriod = async (req, res) => {
+//   try {
+//     const { period_id } = req.params;
+//     const { adjustments = {} } = req.body; // Optional adjustments like % increase
+
+//     // Get current period
+//     const [currentPeriod] = await pool.query(
+//       "SELECT period_year, period_month FROM payroll_periods WHERE id = ?",
+//       [period_id],
+//     );
+
+//     if (currentPeriod.length === 0) {
+//       return res.status(404).json({ error: "Period not found" });
+//     }
+
+//     // Find previous period (same year, previous month)
+//     const [previousPeriod] = await pool.query(
+//       `SELECT id FROM payroll_periods
+//        WHERE period_year = ? AND period_month = ?
+//        ORDER BY period_year DESC, period_month DESC
+//        LIMIT 1`,
+//       [currentPeriod[0].period_year, currentPeriod[0].period_month - 1 || 12],
+//     );
+
+//     if (previousPeriod.length === 0) {
+//       return res.json({
+//         success: false,
+//         message: "No previous period found to copy from",
+//       });
+//     }
+
+//     // Get all entries from previous period
+//     const [previousEntries] = await pool.query(
+//       `SELECT * FROM payroll_entries
+//        WHERE period_id = ? AND is_approved = TRUE`,
+//       [previousPeriod[0].id],
+//     );
+
+//     if (previousEntries.length === 0) {
+//       return res.json({
+//         success: false,
+//         message: "No approved payroll entries found in previous period",
+//       });
+//     }
+
+//     let createdCount = 0;
+//     let skippedCount = 0;
+
+//     // Copy each entry with optional adjustments
+//     for (const entry of previousEntries) {
+//       // Check if entry already exists for this period
+//       const [existing] = await pool.query(
+//         "SELECT id FROM payroll_entries WHERE staff_id = ? AND period_id = ?",
+//         [entry.staff_id, period_id],
+//       );
+
+//       if (existing.length > 0) {
+//         skippedCount++;
+//         continue;
+//       }
+
+//       // Apply adjustments if provided (e.g., 5% increase)
+//       let basic_salary = entry.basic_salary;
+//       if (adjustments.salary_increase_percent) {
+//         basic_salary =
+//           basic_salary * (1 + adjustments.salary_increase_percent / 100);
+//       }
+
+//       // Create new entry
+//       await pool.query(
+//         `INSERT INTO payroll_entries (
+//           staff_id, period_id, basic_salary,
+//           housing_allowance, transport_allowance, medical_allowance, other_allowance,
+//           allowance_description, income_tax, ssnit_employee, ssnit_employer,
+//           welfare_deduction, loan_deduction, other_deduction, deduction_description,
+//           is_approved
+//         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+//         [
+//           entry.staff_id,
+//           period_id,
+//           basic_salary,
+//           entry.housing_allowance,
+//           entry.transport_allowance,
+//           entry.medical_allowance,
+//           entry.other_allowance,
+//           entry.allowance_description,
+//           entry.income_tax,
+//           entry.ssnit_employee,
+//           entry.ssnit_employer,
+//           entry.welfare_deduction,
+//           entry.loan_deduction,
+//           entry.other_deduction,
+//           entry.deduction_description,
+//         ],
+//       );
+
+//       createdCount++;
+//     }
+
+//     res.json({
+//       success: true,
+//       message: `Copied ${createdCount} payroll entries from previous period. ${skippedCount} skipped (already exist).`,
+//       created: createdCount,
+//       skipped: skippedCount,
+//     });
+//   } catch (error) {
+//     console.error("Error copying payroll entries:", error);
+//     res.status(500).json({ error: "Failed to copy payroll entries" });
+//   }
+// };
+
+// GET /api/payroll/entry/:id - Get specific payroll entry
+
 const copyEntriesFromPreviousPeriod = async (req, res) => {
+  const connection = await pool.getConnection();
+
   try {
+    await connection.beginTransaction();
+
     const { period_id } = req.params;
     const { adjustments = {} } = req.body; // Optional adjustments like % increase
 
     // Get current period
-    const [currentPeriod] = await pool.query(
+    const [currentPeriod] = await connection.query(
       "SELECT period_year, period_month FROM payroll_periods WHERE id = ?",
-      [period_id]
+      [period_id],
     );
 
     if (currentPeriod.length === 0) {
+      await connection.rollback();
       return res.status(404).json({ error: "Period not found" });
     }
 
-    // Find previous period (same year, previous month)
-    const [previousPeriod] = await pool.query(
+    // Find previous period (same year, previous month OR previous year's December)
+    let previousPeriodYear = currentPeriod[0].period_year;
+    let previousPeriodMonth = currentPeriod[0].period_month - 1;
+
+    if (previousPeriodMonth === 0) {
+      previousPeriodMonth = 12;
+      previousPeriodYear = currentPeriod[0].period_year - 1;
+    }
+
+    const [previousPeriod] = await connection.query(
       `SELECT id FROM payroll_periods 
-       WHERE period_year = ? AND period_month = ?
-       ORDER BY period_year DESC, period_month DESC
-       LIMIT 1`,
-      [currentPeriod[0].period_year, currentPeriod[0].period_month - 1 || 12]
+       WHERE period_year = ? AND period_month = ?`,
+      [previousPeriodYear, previousPeriodMonth],
     );
 
     if (previousPeriod.length === 0) {
+      await connection.rollback();
       return res.json({
         success: false,
         message: "No previous period found to copy from",
       });
     }
 
-    // Get all entries from previous period
-    const [previousEntries] = await pool.query(
-      `SELECT * FROM payroll_entries 
-       WHERE period_id = ? AND is_approved = TRUE`,
-      [previousPeriod[0].id]
+    // Get all entries from previous period with staff details
+    const [previousEntries] = await connection.query(
+      `SELECT 
+        pe.*,
+        se.is_active as staff_is_active,
+        se.first_name,
+        se.last_name,
+        se.staff_number
+       FROM payroll_entries pe
+       LEFT JOIN staff_employees se ON pe.staff_id = se.id
+       WHERE pe.period_id = ? AND pe.is_approved = TRUE`,
+      [previousPeriod[0].id],
     );
 
     if (previousEntries.length === 0) {
+      await connection.rollback();
       return res.json({
         success: false,
         message: "No approved payroll entries found in previous period",
@@ -1227,29 +1586,68 @@ const copyEntriesFromPreviousPeriod = async (req, res) => {
 
     let createdCount = 0;
     let skippedCount = 0;
+    let inactiveSkipped = 0;
+    let alreadyExistsCount = 0;
+    const skippedStaff = [];
 
-    // Copy each entry with optional adjustments
+    // Copy each entry with proper validation
     for (const entry of previousEntries) {
+      // CRITICAL CHECK: Skip if staff is inactive or deleted
+      if (entry.staff_is_active === false || entry.staff_is_active === 0) {
+        inactiveSkipped++;
+        skippedStaff.push({
+          staff_id: entry.staff_id,
+          staff_name: `${entry.first_name} ${entry.last_name}`,
+          staff_number: entry.staff_number,
+          reason: "Staff is inactive/deactivated",
+        });
+        continue;
+      }
+
+      // Also check if staff still exists in the database
+      if (!entry.staff_id) {
+        inactiveSkipped++;
+        skippedStaff.push({
+          staff_id: null,
+          staff_name: "Unknown",
+          staff_number: "N/A",
+          reason: "Staff record no longer exists",
+        });
+        continue;
+      }
+
       // Check if entry already exists for this period
-      const [existing] = await pool.query(
+      const [existing] = await connection.query(
         "SELECT id FROM payroll_entries WHERE staff_id = ? AND period_id = ?",
-        [entry.staff_id, period_id]
+        [entry.staff_id, period_id],
       );
 
       if (existing.length > 0) {
-        skippedCount++;
+        alreadyExistsCount++;
+        skippedStaff.push({
+          staff_id: entry.staff_id,
+          staff_name: `${entry.first_name} ${entry.last_name}`,
+          staff_number: entry.staff_number,
+          reason: "Entry already exists for this period",
+        });
         continue;
       }
 
       // Apply adjustments if provided (e.g., 5% increase)
-      let basic_salary = entry.basic_salary;
+      let basic_salary = parseFloat(entry.basic_salary) || 0;
       if (adjustments.salary_increase_percent) {
         basic_salary =
           basic_salary * (1 + adjustments.salary_increase_percent / 100);
       }
 
+      // Recalculate taxes based on adjusted salary
+      const annualIncome = basic_salary * 12;
+      const income_tax = calculateGHATax(annualIncome);
+      const ssnit_employee = calculateSSNIT(basic_salary);
+      const ssnit_employer = calculateSSNITEmployer(basic_salary);
+
       // Create new entry
-      await pool.query(
+      await connection.query(
         `INSERT INTO payroll_entries (
           staff_id, period_id, basic_salary,
           housing_allowance, transport_allowance, medical_allowance, other_allowance,
@@ -1261,37 +1659,65 @@ const copyEntriesFromPreviousPeriod = async (req, res) => {
           entry.staff_id,
           period_id,
           basic_salary,
-          entry.housing_allowance,
-          entry.transport_allowance,
-          entry.medical_allowance,
-          entry.other_allowance,
-          entry.allowance_description,
-          entry.income_tax,
-          entry.ssnit_employee,
-          entry.ssnit_employer,
-          entry.welfare_deduction,
-          entry.loan_deduction,
-          entry.other_deduction,
-          entry.deduction_description,
-        ]
+          entry.housing_allowance || 0,
+          entry.transport_allowance || 0,
+          entry.medical_allowance || 0,
+          entry.other_allowance || 0,
+          entry.allowance_description || "",
+          income_tax,
+          ssnit_employee,
+          ssnit_employer,
+          entry.welfare_deduction || 0,
+          entry.loan_deduction || 0,
+          entry.other_deduction || 0,
+          entry.deduction_description || "",
+        ],
       );
 
       createdCount++;
     }
 
+    await connection.commit();
+
+    // Prepare response message
+    let message = `Copied ${createdCount} payroll entries from previous period.`;
+    if (inactiveSkipped > 0) {
+      message += ` Skipped ${inactiveSkipped} inactive/deactivated staff.`;
+    }
+    if (alreadyExistsCount > 0) {
+      message += ` ${alreadyExistsCount} entries already existed.`;
+    }
+    if (skippedCount > 0) {
+      message += ` ${skippedCount} other entries skipped.`;
+    }
+
     res.json({
       success: true,
-      message: `Copied ${createdCount} payroll entries from previous period. ${skippedCount} skipped (already exist).`,
+      message: message,
       created: createdCount,
       skipped: skippedCount,
+      inactive_skipped: inactiveSkipped,
+      already_exists: alreadyExistsCount,
+      skipped_staff: skippedStaff.slice(0, 20), // Return first 20 skipped for reference
+      summary: {
+        total_in_previous: previousEntries.length,
+        copied: createdCount,
+        skipped_inactive: inactiveSkipped,
+        already_existed: alreadyExistsCount,
+      },
     });
   } catch (error) {
+    await connection.rollback();
     console.error("Error copying payroll entries:", error);
-    res.status(500).json({ error: "Failed to copy payroll entries" });
+    res.status(500).json({
+      error: "Failed to copy payroll entries",
+      details: error.message,
+    });
+  } finally {
+    connection.release();
   }
 };
 
-// GET /api/payroll/entry/:id - Get specific payroll entry
 const getPayrollEntryById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1320,7 +1746,7 @@ const getPayrollEntryById = async (req, res) => {
        LEFT JOIN payroll_periods pp ON pe.period_id = pp.id
        LEFT JOIN users u ON pe.approved_by = u.id
        WHERE pe.id = ?`,
-      [id]
+      [id],
     );
 
     if (entries.length === 0) {
@@ -1355,14 +1781,13 @@ const updatePayrollEntry = async (req, res) => {
       deduction_description = "",
     } = req.body;
 
-
     // First check if period is processed
     const [periodCheck] = await connection.query(
       `SELECT pp.is_processed 
        FROM payroll_entries pe
        LEFT JOIN payroll_periods pp ON pe.period_id = pp.id
        WHERE pe.id = ?`,
-      [id]
+      [id],
     );
 
     if (periodCheck.length === 0) {
@@ -1426,7 +1851,7 @@ const updatePayrollEntry = async (req, res) => {
         otherDeductionValue,
         deduction_description,
         id,
-      ]
+      ],
     );
 
     await connection.commit();
@@ -1440,7 +1865,7 @@ const updatePayrollEntry = async (req, res) => {
        LEFT JOIN staff_employees se ON pe.staff_id = se.id
        LEFT JOIN staff_categories sc ON se.category_id = sc.id
        WHERE pe.id = ?`,
-      [id]
+      [id],
     );
 
     res.json({
@@ -1474,7 +1899,7 @@ const deletePayrollEntry = async (req, res) => {
        FROM payroll_entries pe
        LEFT JOIN payroll_periods pp ON pe.period_id = pp.id
        WHERE pe.id = ?`,
-      [id]
+      [id],
     );
 
     if (periodCheck.length === 0) {
@@ -1515,7 +1940,7 @@ const deletePayrollPeriod = async (req, res) => {
     // Check if period is processed
     const [periodCheck] = await connection.query(
       "SELECT is_processed FROM payroll_periods WHERE id = ?",
-      [id]
+      [id],
     );
 
     if (periodCheck.length === 0) {
@@ -1587,7 +2012,7 @@ const approvePayrollEntriesBulk = async (req, res) => {
         // Check if entry exists and is not already approved
         const [entry] = await connection.query(
           `SELECT id, is_approved FROM payroll_entries WHERE id = ?`,
-          [entryId]
+          [entryId],
         );
 
         if (entry.length === 0) {
@@ -1619,7 +2044,7 @@ const approvePayrollEntriesBulk = async (req, res) => {
             payment_method || "Bank Transfer",
             payment_reference || `BULK-${Date.now()}`,
             entryId,
-          ]
+          ],
         );
 
         results.approved++;
@@ -1669,7 +2094,7 @@ const createStaffCategory = async (req, res) => {
 
     const [existing] = await pool.query(
       "SELECT id FROM staff_categories WHERE category_name = ?",
-      [category_name]
+      [category_name],
     );
 
     if (existing.length > 0) {
@@ -1678,13 +2103,13 @@ const createStaffCategory = async (req, res) => {
 
     const [result] = await pool.query(
       "INSERT INTO staff_categories (category_name, description) VALUES (?, ?)",
-      [category_name, description]
+      [category_name, description],
     );
 
-    res.status(201).json({ 
-      id: result.insertId, 
-      category_name, 
-      description 
+    res.status(201).json({
+      id: result.insertId,
+      category_name,
+      description,
     });
   } catch (error) {
     console.error("Error creating staff category:", error);
@@ -1703,7 +2128,7 @@ const bulkImportStaff = async (req, res) => {
     const results = {
       imported: 0,
       errors: [],
-      duplicates: 0
+      duplicates: 0,
     };
 
     for (const staffData of staff) {
@@ -1711,14 +2136,14 @@ const bulkImportStaff = async (req, res) => {
         // Check if staff number exists
         const [existing] = await connection.query(
           "SELECT id FROM staff_employees WHERE staff_number = ?",
-          [staffData.staff_number]
+          [staffData.staff_number],
         );
 
         if (existing.length > 0) {
           results.duplicates++;
           results.errors.push({
             staff_number: staffData.staff_number,
-            error: "Staff number already exists"
+            error: "Staff number already exists",
           });
           continue;
         }
@@ -1744,15 +2169,15 @@ const bulkImportStaff = async (req, res) => {
             staffData.mobile_money_number || null,
             staffData.mobile_money_provider || null,
             staffData.emergency_contact || null,
-            staffData.emergency_phone || null
-          ]
+            staffData.emergency_phone || null,
+          ],
         );
 
         results.imported++;
       } catch (error) {
         results.errors.push({
           staff_number: staffData.staff_number,
-          error: error.message
+          error: error.message,
         });
       }
     }
@@ -1762,25 +2187,128 @@ const bulkImportStaff = async (req, res) => {
     res.json({
       success: true,
       message: `Imported ${results.imported} staff members successfully`,
-      ...results
+      ...results,
     });
   } catch (error) {
     await connection.rollback();
     console.error("Error in bulk staff import:", error);
-    res.status(500).json({ 
-      error: "Failed to import staff", 
-      details: error.message 
+    res.status(500).json({
+      error: "Failed to import staff",
+      details: error.message,
     });
   } finally {
     connection.release();
   }
 };
 
+// PUT /api/payroll/staff/:id/activate - Activate staff member
+const activateStaff = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    // Check if staff exists
+    const [staff] = await pool.query(
+      "SELECT id, first_name, last_name, is_active FROM staff_employees WHERE id = ?",
+      [id],
+    );
+
+    if (staff.length === 0) {
+      return res.status(404).json({ error: "Staff member not found" });
+    }
+
+    if (staff[0].is_active) {
+      return res.status(400).json({
+        error: "Staff member is already active",
+        staff: staff[0],
+      });
+    }
+
+    await pool.query(
+      "UPDATE staff_employees SET is_active = TRUE WHERE id = ?",
+      [id],
+    );
+
+    const [updatedStaff] = await pool.query(
+      "SELECT * FROM staff_employees WHERE id = ?",
+      [id],
+    );
+
+    res.json({
+      success: true,
+      message: `${updatedStaff[0].first_name} ${updatedStaff[0].last_name} has been activated`,
+      staff: updatedStaff[0],
+    });
+  } catch (error) {
+    console.error("Error activating staff:", error);
+    res.status(500).json({ error: "Failed to activate staff member" });
+  }
+};
+
+// GET /api/payroll/staff/inactive - Get all inactive staff
+const getInactiveStaff = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = "" } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    let whereConditions = ["se.is_active = FALSE"];
+    let queryParams = [];
+
+    if (search) {
+      whereConditions.push(
+        "(se.first_name LIKE ? OR se.last_name LIKE ? OR se.staff_number LIKE ?)",
+      );
+      queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    // Get total count
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM staff_employees se WHERE ${whereConditions.join(" AND ")}`,
+      queryParams,
+    );
+
+    const total = countResult[0].total;
+    const totalPages = Math.ceil(total / limitNum);
+
+    // Get paginated data
+    queryParams.push(limitNum, offset);
+    const [staff] = await pool.query(
+      `SELECT 
+        se.*,
+        sc.category_name,
+        CONCAT(se.first_name, ' ', se.last_name) as full_name
+       FROM staff_employees se
+       LEFT JOIN staff_categories sc ON se.category_id = sc.id
+       WHERE ${whereConditions.join(" AND ")}
+       ORDER BY se.first_name, se.last_name
+       LIMIT ? OFFSET ?`,
+      queryParams,
+    );
+
+    res.json({
+      staff,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching inactive staff:", error);
+    res.status(500).json({ error: "Failed to fetch inactive staff" });
+  }
+};
 
 module.exports = {
+  addStaffCategory,
   getStaff,
   addStaff,
+  updateStaff,
   getPayrollPeriods,
   createPayrollPeriod,
   calculatePayroll,
@@ -1800,4 +2328,9 @@ module.exports = {
   getStaffCategories,
   createStaffCategory,
   bulkImportStaff,
+  getPayrollPeriodById,
+  deleteStaff,
+  deactivateStaff,
+  activateStaff,
+  getInactiveStaff,
 };

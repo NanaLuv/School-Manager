@@ -9,6 +9,7 @@ const getPVHeaders = async (req, res) => {
       start_date,
       end_date,
       paid_to,
+      pv_number,
       page = 1,
       limit = 20,
     } = req.query;
@@ -32,6 +33,11 @@ const getPVHeaders = async (req, res) => {
       queryParams.push(`%${paid_to}%`);
     }
 
+    if (pv_number) {
+      whereConditions.push("pv.pv_number LIKE ?");
+      queryParams.push(`%${pv_number}%`);
+    }
+    
     const [headers] = await pool.query(
       `SELECT 
          pv.*,

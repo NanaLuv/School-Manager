@@ -39,7 +39,6 @@ const SubjectList = () => {
   };
 
   const handleDeleteSubject = async (subjectId) => {
-    console.log("delete", subjectId);
     if (window.confirm("Are you sure you want to delete this subject?")) {
       try {
         await api.delete(`/deletesubject/${subjectId.id}`);

@@ -137,6 +137,7 @@ const UserRegistration = () => {
       username: user.username,
       email: user.email,
       password: "",
+      role_name: user.role_name,
       role_id: user.role_id || "",
       first_name: user.first_name || "",
       last_name: user.last_name || "",
@@ -752,7 +753,7 @@ const UserRegistration = () => {
                     setUserForm({ ...userForm, first_name: e.target.value })
                   }
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
-                  placeholder="John"
+                  placeholder="Nana"
                 />
               </div>
 
@@ -767,7 +768,7 @@ const UserRegistration = () => {
                     setUserForm({ ...userForm, last_name: e.target.value })
                   }
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
-                  placeholder="Doe"
+                  placeholder="Love"
                 />
               </div>
             </div>
@@ -1238,7 +1239,7 @@ const UserRegistration = () => {
               </div>
             </div>
 
-            {/* Password strength indicator (optional but nice) */}
+            {/* Password strength indicator */}
             {defaultPasswordForm.defaultPassword && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">

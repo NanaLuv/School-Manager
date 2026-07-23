@@ -22,7 +22,6 @@ const ClassTeachersList = () => {
     try {
       const response = await api.get("/getclassteachers");
       setClassTeachers(response.data);
-      console.log("fetched class teachers:", response.data);
     } catch (error) {
       console.error("Error fetching class teachers:", error);
     }

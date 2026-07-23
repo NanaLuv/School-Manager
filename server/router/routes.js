@@ -144,6 +144,9 @@ const {
   getSmsLogs,
   getSmsStats,
   getClassPerformanceAssessment,
+  getAllStudentsForArrears,
+  exportSinglePVPDF,
+  getStudentsByBillCategory,
 } = require("../controller/control");
 
 const router = express.Router();
@@ -186,6 +189,13 @@ const {
   getStaffCategories,
   bulkImportStaff,
   createStaffCategory,
+  getPayrollPeriodById,
+  deleteStaff,
+  deactivateStaff,
+  activateStaff,
+  getInactiveStaff,
+  updateStaff,
+  addStaffCategory,
 } = require("../controller/payrollController");
 
 const {
@@ -219,28 +229,28 @@ router.use(authenticateToken);
 router.get("/getusers", getUsers);
 
 //get all subjects
-router.get("/getsubjects", authorizeRoles(1, 2), getSubjects);
+router.get("/getsubjects", authorizeRoles(1, 2, 5), getSubjects);
 
 // create new subject
-router.post("/createnewsubject", authorizeRoles(1, 2), createNewSubject);
+router.post("/createnewsubject", authorizeRoles(1, 2, 5), createNewSubject);
 
 //update subject
-router.put("/updatesubject/:id", authorizeRoles(1, 2), updateSubjects);
+router.put("/updatesubject/:id", authorizeRoles(1, 2, 5), updateSubjects);
 
 //delete subject
-router.delete("/deletesubject/:id", authorizeRoles(1), deleteSubject);
+router.delete("/deletesubject/:id", authorizeRoles(1, 2, 5), deleteSubject);
 
 //get teachers
-router.get("/getteachers", authorizeRoles(1, 2), getTeachers);
+router.get("/getteachers", authorizeRoles(1, 2, 5), getTeachers);
 
 //create teachers
-router.post("/createteacher", authorizeRoles(1), createTeacher);
+router.post("/createteacher", authorizeRoles(1, 2, 5), createTeacher);
 
 //update teachers
-router.put("/updateteacher/:id", authorizeRoles(1), updateTeachers);
+router.put("/updateteacher/:id", authorizeRoles(1, 2, 5), updateTeachers);
 
 //delete teacher
-router.delete("/deleteteacher/:id", authorizeRoles(1), deleteTeacher);
+router.delete("/deleteteacher/:id", authorizeRoles(1, 2, 5), deleteTeacher);
 
 //get academic year
 router.get("/getacademicyears", getAcademicYears);
@@ -260,33 +270,33 @@ router.get("/getterms", getTerms);
 //get terms by academic year
 router.get(
   "/terms/by-academic-year",
-  authorizeRoles(1, 2, 4),
+  authorizeRoles(1, 2, 4, 5),
   getTermsByAcademicYear,
 );
 
 //create terms
 router.post("/createterm", authorizeRoles(1), createTerm);
 router.put("/updateTerm/:id", authorizeRoles(1, 4), updateTerm);
-router.delete("/deleteTerm/:id", authorizeRoles(1), deleteTerm);
+router.delete("/deleteterm/:id", authorizeRoles(1), deleteTerm);
 
 //get classes
-router.get("/getclasses", authorizeRoles(1, 2, 4), getClasses);
+router.get("/getclasses", authorizeRoles(1, 2, 4, 5), getClasses);
 router.get("/getclassespaginated", getClassesPaginated);
 
 //create class
-router.post("/createclass", authorizeRoles(1), createClass);
-router.put("/updateclass/:id", authorizeRoles(1), updateClass);
-router.delete("/deleteclass/:id", authorizeRoles(1), deleteClass);
+router.post("/createclass", authorizeRoles(1, 5), createClass);
+router.put("/updateclass/:id", authorizeRoles(1, 5), updateClass);
+router.delete("/deleteclass/:id", authorizeRoles(1, 5), deleteClass);
 router.get(
   "/getclasses/:id/students",
-  authorizeRoles(1, 2),
+  authorizeRoles(1, 2, 5),
   getClassWithStudents,
 );
 
 //get class with students
 router.get(
   "/getclasses/:id/export-students",
-  authorizeRoles(1),
+  authorizeRoles(1, 5),
   exportClassStudents,
 );
 
@@ -325,7 +335,12 @@ router.put("/promotestudent/:id", promoteStudent);
 router.delete("/deleteclassassignment/:id", deleteClassAssignment);
 
 // Students routes
-router.get("/getstudents", authorizeRoles(1, 2, 4), getStudents);
+router.get("/getstudents", authorizeRoles(1, 2, 4, 5), getStudents);
+router.get(
+  "/getallstudents",
+  authorizeRoles(1, 2, 4),
+  getAllStudentsForArrears,
+);
 router.put("/deactivatestudent/:id", authorizeRoles(1), deactivateStudent);
 router.put("/activatestudent/:id", authorizeRoles(1), activateStudent);
 router.post("/importstudents", authorizeRoles(1), importStudents);
@@ -345,29 +360,37 @@ router.put(
 
 router.get("/getgradingscales", getGradingScales);
 router.get("/getgradingscales/:id", getGradingScaleById);
-router.post("/creategradingscale", authorizeRoles(1, 2), createGradingScale);
-router.put("/updategradingscale/:id", authorizeRoles(1, 2), updateGradingScale);
-router.delete("/deletegradingscale/:id", authorizeRoles(1), deleteGradingScale);
+router.post("/creategradingscale", authorizeRoles(1, 2, 5), createGradingScale);
+router.put(
+  "/updategradingscale/:id",
+  authorizeRoles(1, 2, 5),
+  updateGradingScale,
+);
+router.delete(
+  "/deletegradingscale/:id",
+  authorizeRoles(1, 2, 5),
+  deleteGradingScale,
+);
 router.get("/calculategrade/:score", calculateGrade);
 
 // Grade management routes
 // Bulk operations
-router.post("/createbulkgrades", authorizeRoles(1, 2), createBulkGrades);
+router.post("/createbulkgrades", authorizeRoles(1, 2, 5), createBulkGrades);
 router.get("/getclasssubjects/:classId/:academicYearId", getClassSubjects);
-router.get("/getgrades", authorizeRoles(1, 2, 3), getGrades);
+router.get("/getgrades", authorizeRoles(1, 2, 3, 5), getGrades);
 router.get(
   "/exportgradetemplate",
-  authorizeRoles(1, 2, 3),
+  authorizeRoles(1, 2, 3, 5),
   exportGradeTemplate,
 );
 router.post(
   "/importgrades",
-  authorizeRoles(1, 2),
+  authorizeRoles(1, 2, 5),
   upload.single("file"),
   importGrades,
 );
 
-router.get("/getreportcards", authorizeRoles(1, 2, 3), getReportCards);
+router.get("/getreportcards", authorizeRoles(1, 2, 3, 5), getReportCards);
 router.get("/getreportcard/:id", getReportCardById);
 router.get(
   "/getindividualreportcardpdf/:report_card_id",
@@ -386,12 +409,13 @@ router.get(
 
 // Attendance routes
 router.get("/attendance/class/:class_id", getStudentsForAttendance);
-router.post("/attendance/mark", authorizeRoles(1, 2), markAttendance);
-router.post("/attendance/bulk", authorizeRoles(1, 2), markBulkAttendance);
+router.post("/attendance/mark", authorizeRoles(1, 2, 5), markAttendance);
+router.post("/attendance/bulk", authorizeRoles(1, 2, 5), markBulkAttendance);
 router.get("/attendance/records", getAttendanceRecords);
 router.get("/attendance/statistics", getAttendanceStatistics);
 router.get("/attendance/reports", getAttendanceReports);
-router.get("/attendance/export", authorizeRoles(1), exportAttendanceReport);
+router.get("/attendance/export", authorizeRoles(1, 5), exportAttendanceReport);
+
 //fee category routes
 router.get("/getfeecategories", authorizeRoles(1, 2, 4), getFeeCategories);
 router.post("/createfeecategory", authorizeRoles(1), createFeeCategory);
@@ -430,6 +454,7 @@ router.get(
 router.get("/getstudentarrears/:studentId", getStudentArrears);
 router.post("/addstudentarrear", addStudentArrear);
 router.delete("/deletestudentarrear/:id", deleteStudentArrear);
+
 // router.delete("/student-arrears", deleteAllArrears);
 
 //student overpayments routes
@@ -473,6 +498,7 @@ router.delete("/cash-receipts/:id", authorizeRoles(1, 4), deleteCashReceipt);
 router.get("/expenses", authorizeRoles(1, 2, 4), getExpenses);
 router.get("/expenses/statistics", getExpenseStatistics);
 router.get("/expenses/categories", getExpenseCategories);
+router.get("/pv-headers/:id/export-pdf", exportSinglePVPDF);
 router.get("/expenses/export", exportExpenses);
 router.post("/expenses", authorizeRoles(1, 4), createExpense);
 router.get("/expenses/:id", getExpenseById);
@@ -543,6 +569,7 @@ router.get(
 );
 
 //payroll routes
+router.post("/payroll/addstaffcategory", addStaffCategory);
 router.get("/payroll/getstaff", authorizeRoles(1, 4), getStaff);
 router.post("/payroll/addstaff", authorizeRoles(1, 4), addStaff);
 router.get(
@@ -580,6 +607,14 @@ router.post("/payroll/approve-bulk", approvePayrollEntriesBulk);
 router.get("/payroll/categories", getStaffCategories);
 router.post("/payroll/categories", createStaffCategory);
 router.post("/payroll/bulk-import", bulkImportStaff);
+router.get("/payroll/period/:periodId", getPayrollPeriodById);
+
+router.put("/update-payroll/staff/:id", updateStaff);
+
+router.delete("/payroll/staff/:id", deleteStaff);
+router.put("/payroll/staff/:id/deactivate", deactivateStaff);
+router.put("/payroll/staff/:id/activate", activateStaff);
+router.get("/payroll/staff/inactive", getInactiveStaff);
 
 // Profit & Loss Routes
 router.get("/finance/profit-loss", authorizeRoles(1, 4), getProfitLossData);
@@ -614,8 +649,10 @@ router.get("/sms-stats", getSmsStats);
 
 router.get(
   "/assessment/class-performance",
-  authorizeRoles(1, 4),
+  authorizeRoles(1, 5),
   getClassPerformanceAssessment,
 );
+
+router.get("/getstudentsbybillcategory", getStudentsByBillCategory);
 
 module.exports = router;

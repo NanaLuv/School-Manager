@@ -94,23 +94,81 @@ const PayrollPeriods = () => {
     }
   };
 
+  // const handleCopyFromPrevious = async (periodId) => {
+  //   if (window.confirm("Copy all payroll entries from previous period?")) {
+  //     try {
+  //       const response = await api.post(`/payroll/copy-previous/${periodId}`, {
+  //         adjustments: {
+  //           salary_increase_percent: 0, // Optional: 5% increase
+  //         },
+  //       });
+
+  //       if (response.data.success) {
+  //         alert(response.data.message);
+  //         // Refresh the entries list
+  //         fetchPeriods(periodId);
+  //       }
+  //     } catch (error) {
+  //       console.error("Error copying from previous:", error);
+  //       alert("Failed to copy from previous period");
+  //     }
+  //   }
+  // };
+
   const handleCopyFromPrevious = async (periodId) => {
-    if (window.confirm("Copy all payroll entries from previous period?")) {
+    const salaryIncrease = window.prompt(
+      "Enter salary increase percentage (e.g., 5 for 5% increase, or 0 for no increase):",
+      "0",
+    );
+
+    if (salaryIncrease === null) return;
+
+    const confirmMsg =
+      `Copy all payroll entries from previous period?\n\n` +
+      `Salary increase: ${salaryIncrease}%\n` +
+      `Note: Inactive/deactivated staff will NOT be copied.`;
+
+    if (window.confirm(confirmMsg)) {
       try {
         const response = await api.post(`/payroll/copy-previous/${periodId}`, {
           adjustments: {
-            salary_increase_percent: 0, // Optional: 5% increase
+            salary_increase_percent: parseFloat(salaryIncrease) || 0,
           },
         });
 
         if (response.data.success) {
-          alert(response.data.message);
-          // Refresh the entries list
-          fetchPeriods(periodId);
+          let message = response.data.message;
+
+          // Show details about skipped staff
+          if (response.data.inactive_skipped > 0) {
+            message += `\n\n⚠️ ${response.data.inactive_skipped} inactive staff were NOT copied.`;
+
+            if (
+              response.data.skipped_staff &&
+              response.data.skipped_staff.length > 0
+            ) {
+              message += `\n\nSkipped staff:\n`;
+              response.data.skipped_staff.slice(0, 10).forEach((staff) => {
+                message += `• ${staff.staff_name} (${staff.staff_number}) - ${staff.reason}\n`;
+              });
+              if (response.data.skipped_staff.length > 10) {
+                message += `... and ${response.data.skipped_staff.length - 10} more`;
+              }
+            }
+          }
+
+          alert(message);
+
+          // Refresh the period data
+          const response2 = await api.get(`/payroll/entries/${periodId}`);
+          // Update your UI if needed
+          fetchPeriods(); // Refresh the periods list
         }
       } catch (error) {
         console.error("Error copying from previous:", error);
-        alert("Failed to copy from previous period");
+        alert(
+          error.response?.data?.error || "Failed to copy from previous period",
+        );
       }
     }
   };

@@ -79,7 +79,6 @@ const PayrollEntries = () => {
     setLoading(true);
     try {
       const response = await api.get(`/payroll/entries/${selectedPeriod}`);
-      console.log("Fetched entries response:", response.data);
       setEntries(response.data?.entries || []);
       setSummary(response.data?.summary || {});
     } catch (error) {

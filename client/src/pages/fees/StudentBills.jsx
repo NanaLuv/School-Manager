@@ -283,10 +283,11 @@ const StudentBills = () => {
       const overpaymentsMap = {};
 
       studentIds.forEach((studentId, index) => {
-        arrearsMap[studentId] = arrearsResults[index].data;
-        overpaymentsMap[studentId] = overpaymentsResults[index].data.filter(
-          (op) => op.status === "Active",
-        );
+        arrearsMap[studentId] = arrearsResults[index].data?.arrears || [];
+        overpaymentsMap[studentId] =
+          overpaymentsResults[index].data?.overpayments.filter(
+            (op) => op.status === "Active",
+          ) || [];
       });
 
       setStudentArrears((prev) => ({ ...prev, ...arrearsMap }));
@@ -1455,7 +1456,7 @@ const StudentCardHeader = React.memo(
             </div>
             <p className="text-sm text-gray-500">
               {studentData.student.admission_number} •{" "}
-              {studentData.student.class_name}
+              {/* {studentData.student.class_name} */}
             </p>
           </div>
 

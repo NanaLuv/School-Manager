@@ -30,6 +30,7 @@ import {
   ChartPieIcon,
   ArrowLeftEndOnRectangleIcon,
   EnvelopeIcon,
+  MagnifyingGlassCircleIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../../pages/contexts/AuthContext";
 
@@ -70,13 +71,13 @@ const Sidebar = () => {
       name: "Students",
       icon: UsersIcon,
       path: "/students-lists",
-      roles: ["admin"],
+      roles: ["admin","academics"],
     },
     {
       name: "Teachers",
       icon: AcademicCapIcon,
       path: "/teachers/list",
-      roles: ["admin"],
+      roles: ["admin","academics"],
     },
     {
       name: "Classes",
@@ -86,22 +87,22 @@ const Sidebar = () => {
           name: "Class List",
           path: "/classes/list",
           icon: ClipboardDocumentListIcon,
-          roles: ["admin", "teacher"],
+          roles: ["admin", "teacher", "academics"],
         },
         {
           name: "Class Assignments",
           path: "/classes/assignments",
           icon: UsersIcon,
-          roles: ["admin"],
+          roles: ["admin","academics"],
         },
         {
           name: "Class Teachers",
           path: "/classes/teachers",
           icon: AcademicCapIcon,
-          roles: ["admin"],
+          roles: ["admin","academics"],
         },
       ],
-      roles: ["admin"],
+      roles: ["admin","academics"],
     },
     {
       name: "Subjects",
@@ -111,17 +112,17 @@ const Sidebar = () => {
           name: "Subject List",
           path: "/subjects/list",
           icon: QueueListIcon,
-          roles: ["admin"],
+          roles: ["admin","academics"],
         },
 
         {
           name: "Subject Assignments",
           path: "/subjects-assignments",
           icon: BookOpenIcon,
-          roles: ["admin"],
+          roles: ["admin","academics"],
         },
       ],
-      roles: ["admin"],
+      roles: ["admin","academics"],
     },
 
     {
@@ -132,16 +133,16 @@ const Sidebar = () => {
           name: "Attendance",
           path: "/academics/attendance",
           icon: CalendarDaysIcon,
-          roles: ["admin", "teacher"],
+          roles: ["admin", "teacher", "academics"],
         },
         {
           name: "Reports & Analytics",
           path: "/academics/attendance/reports",
           icon: ChartBarIcon,
-          roles: ["admin", "teacher"],
+          roles: ["admin", "teacher", "academics"],
         },
       ],
-      roles: ["admin", "teacher"],
+      roles: ["admin", "teacher", "academics"],
     },
     {
       name: "Academics",
@@ -151,34 +152,34 @@ const Sidebar = () => {
           name: "Scores",
           path: "/academics/grades",
           icon: DocumentTextIcon,
-          roles: ["admin", "teacher"],
+          roles: ["admin", "teacher", "academics"],
         },
         {
           name: "Report Cards",
           path: "/academics/report-cards",
           icon: BookmarkIcon,
-          roles: ["admin", "teacher", "student"],
+          roles: ["admin", "teacher", "student", "academics"],
         },
         {
           name: "Grade Scales",
           icon: CalendarIcon,
           path: "/academics/grading-scales",
-          roles: ["admin"],
+          roles: ["admin","academics"],
         },
         {
           name: "Approve Scores",
           icon: AcademicCapIcon,
           path: "/academics/report-cards/generate",
-          roles: ["admin"],
+          roles: ["admin","academics"],
         },
         {
           name: "Assessment",
           icon: BookOpenIcon,
           path: "/academics/assessment",
-          roles: ["admin", "teacher"],
+          roles: ["admin", "teacher", "academics"],
         },
       ],
-      roles: ["admin", "teacher", "student"],
+      roles: ["admin", "teacher", "student", "academics"],
     },
 
     {
@@ -186,7 +187,7 @@ const Sidebar = () => {
       icon: BanknotesIcon,
       subItems: [
         {
-          name: "Arrears Management",
+          name: "Arrears & Credits",
           path: "/finance/arrears",
           icon: ExclamationTriangleIcon,
           roles: ["admin", "accountant"],
@@ -231,6 +232,12 @@ const Sidebar = () => {
           name: "Financial Reports",
           path: "/finance/reports",
           icon: ChartBarIcon,
+          roles: ["admin", "accountant"],
+        },
+        {
+          name: "Bill Overview",
+          path: "/finance/bill-overview",
+          icon: MagnifyingGlassCircleIcon,
           roles: ["admin", "accountant"],
         },
       ],
@@ -326,7 +333,7 @@ const Sidebar = () => {
         onClick={toggleMobile}
       />
 
-      {/* Sidebar - MODERN COLOR SCHEME */}
+      {/* Sidebar  */}
       <aside
         className={`
         fixed md:relative z-40 h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white
@@ -341,11 +348,9 @@ const Sidebar = () => {
           {expanded ? (
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">S</span>
+                <span className="text-white font-bold text-lg">T</span>
               </div>
-              <h1 className="text-xl font-bold whitespace-nowrap">
-                School Manager
-              </h1>
+              <h1 className="text-xl font-bold whitespace-nowrap">Trackers</h1>
             </div>
           ) : (
             <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center mx-auto">

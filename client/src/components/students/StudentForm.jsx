@@ -18,7 +18,7 @@ const StudentForm = ({
     parent_contact: "",
     parent_email: "",
     address: "",
-    enrolled_date: new Date().toISOString().split("T")[0], // Default to today in correct format
+    enrolled_date: new Date().toISOString().split("T")[0],
     has_fee_block: false,
     is_active: true,
     photo: null,
@@ -28,16 +28,14 @@ const StudentForm = ({
   const [errors, setErrors] = useState({});
   const fileInputRef = useRef(null);
 
-  // Helper function to convert ISO date to yyyy-MM-dd format
+  // Helper function to format date
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
 
-    // If it's already in yyyy-MM-dd format, return as is
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       return dateString;
     }
 
-    // If it's an ISO date, convert to yyyy-MM-dd
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return "";
 
@@ -48,9 +46,25 @@ const StudentForm = ({
     return `${year}-${month}-${day}`;
   };
 
+  // Helper function to get photo URL
+  const getPhotoUrl = (photoFilename) => {
+    if (!photoFilename) return null;
+
+    // If it's already a full URL, return it
+    if (
+      photoFilename.startsWith("http://") ||
+      photoFilename.startsWith("https://")
+    ) {
+      return photoFilename;
+    }
+
+    // Use relative path - this will work in both dev and production
+    // The browser will resolve this relative to the current domain
+    return `/uploads/students/${photoFilename}`;
+  };
+
   useEffect(() => {
     if (student) {
-      // Format dates properly for the input fields
       const formattedEnrolledDate = formatDateForInput(student.enrolled_date);
       const formattedDOB = formatDateForInput(student.date_of_birth);
 
@@ -66,17 +80,15 @@ const StudentForm = ({
         address: student.address || "",
         enrolled_date:
           formattedEnrolledDate || new Date().toISOString().split("T")[0],
-        class_id: student.class_id || "", // Set current class if exists
+        class_id: student.class_id || "",
         has_fee_block: student.has_fee_block || false,
         is_active: student.is_active !== false,
         photo: null,
       });
 
-      // Set preview if student has a photo
+      // Set preview if student has a photo - using the helper function
       if (student.photo_filename) {
-        setPreviewUrl(
-          `http://localhost:3001/uploads/students/${student.photo_filename}`
-        );
+        setPreviewUrl(getPhotoUrl(student.photo_filename));
       } else {
         setPreviewUrl("");
       }
@@ -101,7 +113,6 @@ const StudentForm = ({
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file type
       const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
       if (!validTypes.includes(file.type)) {
         setErrors((prev) => ({
@@ -111,7 +122,6 @@ const StudentForm = ({
         return;
       }
 
-      // Validate file size (max 2MB)
       if (file.size > 2 * 1024 * 1024) {
         setErrors((prev) => ({
           ...prev,
@@ -123,7 +133,6 @@ const StudentForm = ({
       setFormData((prev) => ({ ...prev, photo: file }));
       setErrors((prev) => ({ ...prev, photo: "" }));
 
-      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreviewUrl(reader.result);
@@ -175,16 +184,13 @@ const StudentForm = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (validateForm()) {
-      // Create FormData to handle file upload
       const submitData = new FormData();
 
-      // Append all form fields with proper boolean conversion
       Object.keys(formData).forEach((key) => {
         if (formData[key] !== null && formData[key] !== undefined) {
           if (key === "photo" && formData[key] instanceof File) {
             submitData.append(key, formData[key]);
           } else if (key === "has_fee_block" || key === "is_active") {
-            // Convert booleans to integers (1 or 0) for MySQL
             submitData.append(key, formData[key] ? "1" : "0");
           } else {
             submitData.append(key, formData[key]);
@@ -192,7 +198,6 @@ const StudentForm = ({
         }
       });
 
-      // If editing and no new photo, ensure we keep the existing photo
       if (student && !formData.photo && student.photo_filename) {
         submitData.append("existing_photo", student.photo_filename);
       }
@@ -220,6 +225,16 @@ const StudentForm = ({
                   src={previewUrl}
                   alt="Student preview"
                   className="h-24 w-24 rounded-full object-cover border-2 border-gray-300"
+                  onError={(e) => {
+                    // If image fails to load, show fallback
+                    e.target.style.display = "none";
+                    const parent = e.target.parentElement;
+                    const fallback = document.createElement("div");
+                    fallback.className =
+                      "h-24 w-24 rounded-full bg-gray-200 flex items-center justify-center border-2 border-dashed border-gray-300";
+                    fallback.innerHTML = `<span class="text-gray-400 text-2xl font-bold">${formData.first_name?.charAt(0) || ""}${formData.last_name?.charAt(0) || ""}</span>`;
+                    parent.appendChild(fallback);
+                  }}
                 />
                 <button
                   type="button"
@@ -445,25 +460,28 @@ const StudentForm = ({
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
               errors.parent_contact ? "border-red-500" : "border-gray-300"
             }`}
-            placeholder="Phone number or email"
+            placeholder="Phone number"
           />
           {errors.parent_contact && (
             <p className="text-red-500 text-sm mt-1">{errors.parent_contact}</p>
           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Parent email *
+            Parent Email
           </label>
           <input
-            type="text"
+            type="email"
             name="parent_email"
             value={formData.parent_email}
             onChange={handleChange}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
               errors.parent_email ? "border-red-500" : "border-gray-300"
             }`}
-            placeholder="Phone number or email"
+            placeholder="parent@email.com"
           />
           {errors.parent_email && (
             <p className="text-red-500 text-sm mt-1">{errors.parent_email}</p>
@@ -486,19 +504,6 @@ const StudentForm = ({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* <div className="flex items-center">
-          <input
-            type="checkbox"
-            name="has_fee_block"
-            checked={formData.has_fee_block}
-            onChange={handleChange}
-            className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
-          />
-          <label className="ml-2 block text-sm text-gray-700">
-            Fee Block (restrict access due to unpaid fees)
-          </label>
-        </div> */}
-
         <div className="flex items-center">
           <input
             type="checkbox"

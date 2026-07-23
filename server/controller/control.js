@@ -115,6 +115,8 @@ const getUsers = async (req, res) => {
         u.email,
         u.created_at,
         u.is_active,
+        u.first_name,
+        u.last_name,
         r.role_name
       FROM users u
       LEFT JOIN roles r ON u.role_id = r.id
@@ -2461,6 +2463,62 @@ const getStudents = async (req, res) => {
   }
 };
 
+// getting students for arrears management
+const getAllStudentsForArrears = async (req, res) => {
+  try {
+    const { class_id, includeInactive = "true" } = req.query;
+
+    let whereClause = "1=1";
+    let whereParams = [];
+
+    if (includeInactive !== "true") {
+      whereClause += " AND (s.is_active IS NULL OR s.is_active = TRUE)";
+    }
+
+    if (class_id) {
+      whereClause += " AND c.id = ?";
+      whereParams.push(class_id);
+    }
+
+    const [students] = await pool.query(
+      `
+      SELECT 
+        s.*, 
+        ca.class_id, 
+        c.class_name,
+        c.room_number,
+        ca.academic_year_id,
+        ay.year_label as academic_year,
+        ca.promotion_status,
+        ca.date_assigned as class_assignment_date,
+        EXISTS(
+          SELECT 1 FROM student_arrears sa 
+          WHERE sa.student_id = s.id 
+          AND sa.academic_year_id = (SELECT id FROM academic_years WHERE is_current = TRUE)
+        ) as has_arrears,
+        EXISTS(
+          SELECT 1 FROM student_overpayments so 
+          WHERE so.student_id = s.id 
+          AND so.status = 'Active'
+        ) as has_overpayment
+      FROM students s
+      LEFT JOIN class_assignments ca ON s.id = ca.student_id 
+        AND ca.academic_year_id = (SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1)
+      LEFT JOIN classes c ON ca.class_id = c.id
+      LEFT JOIN academic_years ay ON ca.academic_year_id = ay.id
+      WHERE ${whereClause}
+      ORDER BY s.first_name, s.last_name
+    `,
+      whereParams,
+    );
+
+    res.json(students);
+  } catch (error) {
+    console.error("Error fetching all students:", error);
+    res.status(500).json({ error: "Failed to fetch students" });
+  }
+};
+
 // POST /api/students - Create new student with photo
 // createStudent function to handle class assignment
 const createStudent = async (req, res) => {
@@ -2904,8 +2962,8 @@ const importStudents = async (req, res) => {
             parent_name,
             parent_contact,
             parent_email,
-            address,         
-           ],
+            address,
+          ],
         );
 
         const studentId = result.insertId;
@@ -3998,17 +4056,23 @@ const getReportCardById = async (req, res) => {
   }
 };
 
-//generateReportCards function
+// Generate report cards for a class (with update capability)
 const generateReportCards = async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    const { class_id, academic_year_id, term_id, issued_by } = req.body;
+    const {
+      class_id,
+      academic_year_id,
+      term_id,
+      issued_by,
+      force_update = false,
+    } = req.body;
 
     // Get all students in the class
-    const [students] = await pool.query(
+    const [students] = await connection.query(
       `
       SELECT s.id as student_id, s.first_name, s.last_name, s.admission_number
       FROM students s
@@ -4026,10 +4090,9 @@ const generateReportCards = async (req, res) => {
 
     const results = {
       generated: 0,
+      updated: 0,
       errors: [],
       skipped: 0,
-      created: 0,
-      updated: 0,
     };
 
     // Calculate subject positions AND overall positions
@@ -4051,15 +4114,6 @@ const generateReportCards = async (req, res) => {
           "SELECT id FROM report_cards WHERE student_id = ? AND academic_year_id = ? AND term_id = ?",
           [student.student_id, academic_year_id, term_id],
         );
-
-        if (existing.length > 0) {
-          results.skipped++;
-          results.errors.push({
-            student: `${student.first_name} ${student.last_name}`,
-            error: "Report card already exists",
-          });
-          continue;
-        }
 
         // Get student's grades for this term
         const [grades] = await connection.query(
@@ -4096,35 +4150,69 @@ const generateReportCards = async (req, res) => {
         // Get overall position for this student
         const overallPosition = overallPositions[student.student_id] || null;
 
-        // Get attendance - FIXED: Remove undefined date parameters
+        // Get attendance
         const attendanceData = await getStudentAttendance(
           student.student_id,
           academic_year_id,
           term_id,
-          // Removed termStartDate and termEndDate parameters
         );
 
-        // Create report card WITH overall position
-        const [reportCardResult] = await connection.query(
-          `INSERT INTO report_cards 
-           (student_id, academic_year_id, term_id, overall_total, overall_position, 
-            attendance_days, total_days, date_issued, issued_by) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)`,
-          [
-            student.student_id,
-            academic_year_id,
-            term_id,
-            overallTotal,
-            overallPosition,
-            attendanceData.present_days,
-            attendanceData.total_days,
-            issued_by,
-          ],
-        );
+        let reportCardId;
 
-        const reportCardId = reportCardResult.insertId;
+        if (existing.length > 0) {
+          // UPDATE existing report card
+          reportCardId = existing[0].id;
 
-        // Create report card details
+          // Update the main report card
+          await connection.query(
+            `UPDATE report_cards SET 
+              overall_total = ?,
+              overall_position = ?,
+              attendance_days = ?,
+              total_days = ?,
+              date_issued = CURDATE(),
+              issued_by = ?
+             WHERE id = ?`,
+            [
+              overallTotal,
+              overallPosition,
+              attendanceData.present_days,
+              attendanceData.total_days,
+              issued_by,
+              reportCardId,
+            ],
+          );
+
+          // Delete existing report card details (subject grades)
+          await connection.query(
+            "DELETE FROM report_card_details WHERE report_card_id = ?",
+            [reportCardId],
+          );
+
+          results.updated++;
+        } else {
+          // CREATE new report card
+          const [reportCardResult] = await connection.query(
+            `INSERT INTO report_cards 
+             (student_id, academic_year_id, term_id, overall_total, overall_position, 
+              attendance_days, total_days, date_issued, issued_by) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)`,
+            [
+              student.student_id,
+              academic_year_id,
+              term_id,
+              overallTotal,
+              overallPosition,
+              attendanceData.present_days,
+              attendanceData.total_days,
+              issued_by,
+            ],
+          );
+          reportCardId = reportCardResult.insertId;
+          results.generated++;
+        }
+
+        // Create report card details (always fresh)
         for (const grade of grades) {
           const [gradeInfo] = await connection.query(
             `SELECT grade, remarks FROM grading_scales 
@@ -4152,9 +4240,6 @@ const generateReportCards = async (req, res) => {
             ],
           );
         }
-
-        results.generated++;
-        results.created++;
       } catch (error) {
         results.errors.push({
           student: `${student.first_name} ${student.last_name}`,
@@ -4166,7 +4251,7 @@ const generateReportCards = async (req, res) => {
     await connection.commit();
 
     res.status(201).json({
-      message: `Generated ${results.generated} report cards, skipped ${results.skipped} existing`,
+      message: `Generated ${results.generated} new report cards, updated ${results.updated} existing, skipped ${results.skipped}`,
       ...results,
     });
   } catch (error) {
@@ -4174,6 +4259,370 @@ const generateReportCards = async (req, res) => {
     console.error("Error generating report cards:", error);
     res.status(500).json({
       error: "Failed to generate report cards",
+      details: error.message,
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Update report card for a single student
+const updateStudentReportCard = async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const { student_id, academic_year_id, term_id, issued_by } = req.body;
+
+    // Get student details
+    const [students] = await connection.query(
+      `SELECT s.id as student_id, s.first_name, s.last_name, s.admission_number
+       FROM students s
+       WHERE s.id = ? AND (s.is_active IS NULL OR s.is_active = TRUE)`,
+      [student_id],
+    );
+
+    if (students.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    const student = students[0];
+
+    // Get student's grades for this term
+    const [grades] = await connection.query(
+      `
+      SELECT 
+        g.subject_id,
+        g.class_score,
+        g.exam_score,
+        g.subject_total,
+        s.subject_name,
+        s.subject_code
+      FROM grades g
+      INNER JOIN subjects s ON g.subject_id = s.id
+      WHERE g.student_id = ? AND g.academic_year_id = ? AND g.term_id = ?
+      ORDER BY s.subject_name
+    `,
+      [student_id, academic_year_id, term_id],
+    );
+
+    if (grades.length === 0) {
+      await connection.rollback();
+      return res
+        .status(400)
+        .json({ error: "No grades found for this student" });
+    }
+
+    // Calculate overall total and position
+    const overallTotal = grades.reduce(
+      (sum, grade) => sum + parseFloat(grade.subject_total || 0),
+      0,
+    );
+
+    // Get class_id from student's assignment
+    const [classAssignment] = await connection.query(
+      `SELECT class_id FROM class_assignments 
+       WHERE student_id = ? AND academic_year_id = ?`,
+      [student_id, academic_year_id],
+    );
+
+    const class_id = classAssignment[0]?.class_id;
+
+    // Get overall position if class_id exists
+    let overallPosition = null;
+    if (class_id) {
+      const overallPositions = await calculateOverallPositions(
+        class_id,
+        academic_year_id,
+        term_id,
+      );
+      overallPosition = overallPositions[student_id] || null;
+    }
+
+    // Get attendance
+    const attendanceData = await getStudentAttendance(
+      student_id,
+      academic_year_id,
+      term_id,
+    );
+
+    // Check if report card exists
+    const [existing] = await connection.query(
+      "SELECT id FROM report_cards WHERE student_id = ? AND academic_year_id = ? AND term_id = ?",
+      [student_id, academic_year_id, term_id],
+    );
+
+    let reportCardId;
+
+    if (existing.length > 0) {
+      // UPDATE existing report card
+      reportCardId = existing[0].id;
+
+      await connection.query(
+        `UPDATE report_cards SET 
+          overall_total = ?,
+          overall_position = ?,
+          attendance_days = ?,
+          total_days = ?,
+          date_issued = CURDATE(),
+          issued_by = ?
+         WHERE id = ?`,
+        [
+          overallTotal,
+          overallPosition,
+          attendanceData.present_days,
+          attendanceData.total_days,
+          issued_by,
+          reportCardId,
+        ],
+      );
+
+      // Delete existing report card details
+      await connection.query(
+        "DELETE FROM report_card_details WHERE report_card_id = ?",
+        [reportCardId],
+      );
+    } else {
+      // CREATE new report card
+      const [reportCardResult] = await connection.query(
+        `INSERT INTO report_cards 
+         (student_id, academic_year_id, term_id, overall_total, overall_position, 
+          attendance_days, total_days, date_issued, issued_by) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)`,
+        [
+          student_id,
+          academic_year_id,
+          term_id,
+          overallTotal,
+          overallPosition,
+          attendanceData.present_days,
+          attendanceData.total_days,
+          issued_by,
+        ],
+      );
+      reportCardId = reportCardResult.insertId;
+    }
+
+    // Create report card details
+    for (const grade of grades) {
+      const [gradeInfo] = await connection.query(
+        `SELECT grade, remarks FROM grading_scales 
+         WHERE ? BETWEEN min_score AND max_score LIMIT 1`,
+        [grade.subject_total],
+      );
+
+      // Calculate subject position (if class_id exists)
+      let subjectPosition = null;
+      if (class_id) {
+        const subjectPositions = await calculateSubjectPositions(
+          class_id,
+          academic_year_id,
+          term_id,
+        );
+        subjectPosition =
+          subjectPositions[grade.subject_id]?.[student_id] || null;
+      }
+
+      await connection.query(
+        `INSERT INTO report_card_details 
+         (report_card_id, subject_id, class_score, exam_score, subject_total, subject_position, grade, remarks) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          reportCardId,
+          grade.subject_id,
+          grade.class_score,
+          grade.exam_score,
+          grade.subject_total,
+          subjectPosition,
+          gradeInfo.length > 0 ? gradeInfo[0].grade : "N/A",
+          gradeInfo.length > 0 ? gradeInfo[0].remarks : "No grade",
+        ],
+      );
+    }
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message:
+        existing.length > 0
+          ? "Report card updated successfully"
+          : "Report card generated successfully",
+      student: `${student.first_name} ${student.last_name}`,
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error updating student report card:", error);
+    res.status(500).json({
+      error: "Failed to update report card",
+      details: error.message,
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Force regenerate all report cards for a class
+const regenerateClassReportCards = async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const { class_id, academic_year_id, term_id, issued_by } = req.body;
+
+    // Delete all existing report cards for this class/term
+    await connection.query(
+      `DELETE rc FROM report_cards rc
+       INNER JOIN class_assignments ca ON rc.student_id = ca.student_id
+       WHERE ca.class_id = ? 
+         AND rc.academic_year_id = ? 
+         AND rc.term_id = ?`,
+      [class_id, academic_year_id, term_id],
+    );
+
+    // Now generate fresh report cards
+    const [students] = await connection.query(
+      `
+      SELECT s.id as student_id, s.first_name, s.last_name, s.admission_number
+      FROM students s
+      INNER JOIN class_assignments ca ON s.id = ca.student_id
+      WHERE ca.class_id = ? AND ca.academic_year_id = ? AND (s.is_active IS NULL OR s.is_active = TRUE)
+      ORDER BY s.first_name, s.last_name
+    `,
+      [class_id, academic_year_id],
+    );
+
+    if (students.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: "No students found in this class" });
+    }
+
+    const results = {
+      generated: 0,
+      errors: [],
+    };
+
+    // Calculate positions
+    const subjectPositions = await calculateSubjectPositions(
+      class_id,
+      academic_year_id,
+      term_id,
+    );
+    const overallPositions = await calculateOverallPositions(
+      class_id,
+      academic_year_id,
+      term_id,
+    );
+
+    for (const student of students) {
+      try {
+        // Get student's grades
+        const [grades] = await connection.query(
+          `
+          SELECT 
+            g.subject_id,
+            g.class_score,
+            g.exam_score,
+            g.subject_total
+          FROM grades g
+          WHERE g.student_id = ? AND g.academic_year_id = ? AND g.term_id = ?
+        `,
+          [student.student_id, academic_year_id, term_id],
+        );
+
+        if (grades.length === 0) {
+          results.errors.push({
+            student: `${student.first_name} ${student.last_name}`,
+            error: "No grades found",
+          });
+          continue;
+        }
+
+        const overallTotal = grades.reduce(
+          (sum, grade) => sum + parseFloat(grade.subject_total || 0),
+          0,
+        );
+
+        const overallPosition = overallPositions[student.student_id] || null;
+
+        const attendanceData = await getStudentAttendance(
+          student.student_id,
+          academic_year_id,
+          term_id,
+        );
+
+        // Create report card
+        const [reportCardResult] = await connection.query(
+          `INSERT INTO report_cards 
+           (student_id, academic_year_id, term_id, overall_total, overall_position, 
+            attendance_days, total_days, date_issued, issued_by) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)`,
+          [
+            student.student_id,
+            academic_year_id,
+            term_id,
+            overallTotal,
+            overallPosition,
+            attendanceData.present_days,
+            attendanceData.total_days,
+            issued_by,
+          ],
+        );
+
+        const reportCardId = reportCardResult.insertId;
+
+        // Create report card details
+        for (const grade of grades) {
+          const [gradeInfo] = await connection.query(
+            `SELECT grade, remarks FROM grading_scales 
+             WHERE ? BETWEEN min_score AND max_score LIMIT 1`,
+            [grade.subject_total],
+          );
+
+          const subjectPosition =
+            subjectPositions[grade.subject_id]?.[student.student_id] || null;
+
+          await connection.query(
+            `INSERT INTO report_card_details 
+             (report_card_id, subject_id, class_score, exam_score, subject_total, subject_position, grade, remarks) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              reportCardId,
+              grade.subject_id,
+              grade.class_score,
+              grade.exam_score,
+              grade.subject_total,
+              subjectPosition,
+              gradeInfo.length > 0 ? gradeInfo[0].grade : "N/A",
+              gradeInfo.length > 0 ? gradeInfo[0].remarks : "No grade",
+            ],
+          );
+        }
+
+        results.generated++;
+      } catch (error) {
+        results.errors.push({
+          student: `${student.first_name} ${student.last_name}`,
+          error: error.message,
+        });
+      }
+    }
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: `Regenerated ${results.generated} report cards`,
+      ...results,
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error regenerating report cards:", error);
+    res.status(500).json({
+      error: "Failed to regenerate report cards",
       details: error.message,
     });
   } finally {
@@ -5230,8 +5679,6 @@ const markBulkAttendance = async (req, res) => {
 
     let { attendance_data, academic_year_id, term_id, date, recorded_by } =
       req.body;
-
-
     if (
       !attendance_data ||
       !Array.isArray(attendance_data) ||
@@ -5340,7 +5787,6 @@ const markBulkAttendance = async (req, res) => {
     }
 
     await connection.commit();
-
 
     res.json({
       message: `Attendance marked for ${results.success} students`,
@@ -5451,7 +5897,6 @@ const getAttendanceRecords = async (req, res) => {
       `,
       queryParams,
     );
-
     res.json(records);
   } catch (error) {
     console.error("Error fetching attendance records:", error);
@@ -6159,7 +6604,6 @@ const exportAttendanceReport = async (req, res) => {
       return res.status(400).json({ error: "Class ID is required" });
     }
 
-
     // Get report data by calling the report generation function directly
     let reportData;
     try {
@@ -6177,7 +6621,6 @@ const exportAttendanceReport = async (req, res) => {
       if (!reportData) {
         throw new Error("Failed to generate report data");
       }
-
     } catch (reportError) {
       console.error("Error generating report for export:", reportError);
       return res.status(500).json({
@@ -6877,453 +7320,6 @@ const calculateStudentPaymentStatus = (finalizedBill, bills) => {
   }
 };
 
-// GET /api/student-bills - Get student bills with filters AND PAGINATION
-// const getStudentBills = async (req, res) => {
-//   try {
-//     const {
-//       class_id,
-//       academic_year_id,
-//       term_id,
-//       student_id,
-//       status,
-//       active_only,
-//       page = 1,
-//       limit = 20,
-//     } = req.query;
-
-//     let whereConditions = ["1=1"];
-//     let queryParams = [];
-
-//     if (active_only === "true") {
-//       whereConditions.push("(s.is_active IS NULL OR s.is_active = TRUE)");
-//     }
-
-//     if (class_id) {
-//       whereConditions.push(`
-//         b.student_id IN (
-//           SELECT student_id FROM class_assignments 
-//           WHERE class_id = ? AND academic_year_id = COALESCE(?, ca.academic_year_id)
-//         )
-//       `);
-//       queryParams.push(class_id);
-//       if (academic_year_id) {
-//         queryParams.push(academic_year_id);
-//       }
-//     }
-
-//     if (academic_year_id) {
-//       whereConditions.push("bt.academic_year_id = ?");
-//       queryParams.push(academic_year_id);
-//     }
-
-//     if (term_id) {
-//       whereConditions.push("bt.term_id = ?");
-//       queryParams.push(term_id);
-//     }
-
-//     if (student_id) {
-//       whereConditions.push("b.student_id = ?");
-//       queryParams.push(student_id);
-//     }
-
-//     // Calculate offset for pagination
-//     const pageNum = parseInt(page);
-//     const limitNum = parseInt(limit);
-//     const offset = (pageNum - 1) * limitNum;
-
-//     // FIRST: Get total count for pagination
-//     const [countResult] = await pool.query(
-//       `
-//       SELECT COUNT(DISTINCT s.id) as total
-//       FROM bills b
-//       LEFT JOIN bill_templates bt ON b.bill_template_id = bt.id
-//       LEFT JOIN students s ON b.student_id = s.id
-//       LEFT JOIN class_assignments ca ON s.id = ca.student_id AND bt.academic_year_id = ca.academic_year_id
-//       LEFT JOIN classes c ON ca.class_id = c.id
-//       LEFT JOIN academic_years ay ON bt.academic_year_id = ay.id
-//       LEFT JOIN terms t ON bt.term_id = t.id
-//       LEFT JOIN fee_categories fc ON bt.fee_category_id = fc.id
-//       LEFT JOIN student_term_bills stb ON (
-//         s.id = stb.student_id AND 
-//         bt.academic_year_id = stb.academic_year_id AND 
-//         bt.term_id = stb.term_id AND
-//         stb.is_finalized = TRUE
-//       )
-//       WHERE ${whereConditions.join(" AND ")}
-//       `,
-//       queryParams,
-//     );
-
-//     const total = countResult[0].total;
-//     const totalPages = Math.ceil(total / limitNum);
-
-//     // SECOND: Get paginated student bills
-//     const [bills] = await pool.query(
-//       `
-//       SELECT 
-//         b.*,
-//         bt.description,
-//         bt.is_compulsory,
-//         bt.academic_year_id,
-//         bt.term_id,
-//         s.first_name,
-//         s.last_name,
-//         s.admission_number,
-//         s.is_active,
-//         c.class_name,
-//         c.id as class_id,
-//         ay.year_label as academic_year,
-//         t.term_name,
-//         fc.category_name,
-//         stb.id as finalized_bill_id,
-//         stb.total_amount as finalized_total,
-//         stb.paid_amount as finalized_paid,
-//         stb.remaining_balance as finalized_balance,
-//         stb.is_fully_paid as finalized_fully_paid,
-//         stb.selected_bills as finalized_selected_bills
-//       FROM bills b
-//       LEFT JOIN bill_templates bt ON b.bill_template_id = bt.id
-//       LEFT JOIN students s ON b.student_id = s.id
-//       LEFT JOIN class_assignments ca ON s.id = ca.student_id AND bt.academic_year_id = ca.academic_year_id
-//       LEFT JOIN classes c ON ca.class_id = c.id
-//       LEFT JOIN academic_years ay ON bt.academic_year_id = ay.id
-//       LEFT JOIN terms t ON bt.term_id = t.id
-//       LEFT JOIN fee_categories fc ON bt.fee_category_id = fc.id
-//       LEFT JOIN student_term_bills stb ON (
-//         s.id = stb.student_id AND 
-//         bt.academic_year_id = stb.academic_year_id AND 
-//         bt.term_id = stb.term_id AND
-//         stb.is_finalized = TRUE
-//       )
-//       WHERE ${whereConditions.join(" AND ")}
-//       GROUP BY s.id, b.id
-//       ORDER BY s.first_name, s.last_name, b.due_date ASC
-//       LIMIT ? OFFSET ?
-//       `,
-//       [...queryParams, limitNum, offset],
-//     );
-
-//     // Process bills to apply edited amounts
-//     const processedBills = bills.map((bill) => {
-//       let finalBill = { ...bill };
-
-//       if (
-//         bill.finalized_selected_bills &&
-//         typeof bill.finalized_selected_bills === "string"
-//       ) {
-//         try {
-//           const selectedBillsData = JSON.parse(bill.finalized_selected_bills);
-//           const editedAmounts = selectedBillsData.edited_amounts || {};
-
-//           if (editedAmounts[bill.id]) {
-//             finalBill.finalized_amount = editedAmounts[bill.id];
-//             finalBill.amount = editedAmounts[bill.id];
-//             finalBill.has_custom_amount = true;
-//             finalBill.original_amount = bill.amount;
-//           }
-//         } catch (e) {
-//           console.error("Error parsing selected_bills:", e);
-//         }
-//       }
-
-//       return finalBill;
-//     });
-
-//     res.json({
-//       bills: processedBills,
-//       pagination: {
-//         page: pageNum,
-//         limit: limitNum,
-//         total,
-//         totalPages,
-//         hasNextPage: pageNum < totalPages,
-//         hasPrevPage: pageNum > 1,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Error fetching student bills:", error);
-//     res.status(500).json({ error: "Failed to fetch student bills" });
-//   }
-// };
-
-
-
-// GET /api/getstudentbills - Get student bills with pagination
-// const getStudentBills = async (req, res) => {
-//   try {
-//     const {
-//       class_id,
-//       academic_year_id,
-//       term_id,
-//       status,
-//       active_only = "true",
-//       page = 1,
-//       limit = 20,
-//     } = req.query;
-
-//     const pageNum = parseInt(page);
-//     const limitNum = parseInt(limit);
-//     const offset = (pageNum - 1) * limitNum;
-
-//     // Build WHERE conditions for students
-//     let studentWhereConditions = ["1=1"];
-//     let queryParams = [];
-
-//     // Class filter
-//     if (class_id && class_id !== "") {
-//       studentWhereConditions.push("ca.class_id = ?");
-//       queryParams.push(class_id);
-//     }
-
-//     // Academic year filter for class assignments
-//     if (academic_year_id && academic_year_id !== "") {
-//       studentWhereConditions.push("ca.academic_year_id = ?");
-//       queryParams.push(academic_year_id);
-//     }
-
-//     // Active only filter
-//     if (active_only === "true") {
-//       studentWhereConditions.push("(s.is_active IS NULL OR s.is_active = TRUE)");
-//     }
-
-//     // ========== STEP 1: Get total count of UNIQUE students ==========
-//     const [countResult] = await pool.query(
-//       `SELECT COUNT(DISTINCT s.id) as total
-//        FROM students s
-//        INNER JOIN class_assignments ca ON s.id = ca.student_id
-//        WHERE ${studentWhereConditions.join(" AND ")}`,
-//       queryParams
-//     );
-
-//     const total = countResult[0].total;
-//     const totalPages = Math.ceil(total / limitNum);
-
-//     // ========== STEP 2: Get paginated students ==========
-//     const [paginatedStudents] = await pool.query(
-//       `SELECT DISTINCT
-//          s.id as student_id,
-//          s.first_name,
-//          s.last_name,
-//          s.admission_number,
-//          c.class_name,
-//          c.id as class_id
-//        FROM students s
-//        INNER JOIN class_assignments ca ON s.id = ca.student_id
-//        INNER JOIN classes c ON ca.class_id = c.id
-//        WHERE ${studentWhereConditions.join(" AND ")}
-//        ORDER BY s.first_name, s.last_name
-//        LIMIT ? OFFSET ?`,
-//       [...queryParams, limitNum, offset]
-//     );
-
-//     // If no students found, return empty result
-//     if (paginatedStudents.length === 0) {
-//       return res.json({
-//         success: true,
-//         bills: [],
-//         pagination: {
-//           page: pageNum,
-//           limit: limitNum,
-//           total: 0,
-//           totalPages: 0,
-//           hasNextPage: false,
-//           hasPrevPage: false,
-//         },
-//       });
-//     }
-
-//     // ========== STEP 3: Get bills for these specific students ==========
-//     const studentIds = paginatedStudents.map(s => s.student_id);
-//     const placeholders = studentIds.map(() => "?").join(",");
-
-//     // Build bill query conditions
-//     let billConditions = [`b.student_id IN (${placeholders})`];
-//     let billParams = [...studentIds];
-
-//     if (academic_year_id && academic_year_id !== "") {
-//       billConditions.push("bt.academic_year_id = ?");
-//       billParams.push(academic_year_id);
-//     }
-
-//     if (term_id && term_id !== "") {
-//       billConditions.push("bt.term_id = ?");
-//       billParams.push(term_id);
-//     }
-
-//     if (status && status !== "all") {
-//       billConditions.push("b.payment_status = ?");
-//       billParams.push(status);
-//     }
-
-//     const [bills] = await pool.query(
-//       `SELECT 
-//          b.id,
-//          b.student_id,
-//          b.amount,
-//          b.due_date,
-//          b.status as bill_status,
-//          b.paid_amount,
-//          b.remaining_amount,
-//          b.payment_status,
-//          b.description as bill_description,
-//          b.created_at,
-//          bt.id as template_id,
-//          bt.is_compulsory,
-//          bt.description as template_description,
-//          bt.academic_year_id,
-//          bt.term_id,
-//          fc.id as fee_category_id,
-//          fc.category_name,
-//          s.first_name,
-//          s.last_name,
-//          s.admission_number,
-//          c.class_name
-//        FROM bills b
-//        INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
-//        INNER JOIN fee_categories fc ON bt.fee_category_id = fc.id
-//        INNER JOIN students s ON b.student_id = s.id
-//        INNER JOIN class_assignments ca ON s.id = ca.student_id
-//        INNER JOIN classes c ON ca.class_id = c.id
-//        WHERE ${billConditions.join(" AND ")}
-//        ORDER BY s.first_name, s.last_name, b.due_date ASC`,
-//       billParams
-//     );
-
-//     // ========== STEP 4: Get finalized term bills for these students ==========
-//     let termBillsMap = {};
-//     if (academic_year_id && term_id) {
-//       const [termBills] = await pool.query(
-//         `SELECT 
-//            student_id,
-//            id as term_bill_id,
-//            total_amount,
-//            paid_amount,
-//            remaining_balance,
-//            is_fully_paid,
-//            selected_bills,
-//            compulsory_amount,
-//            optional_amount
-//          FROM student_term_bills
-//          WHERE student_id IN (${placeholders})
-//            AND academic_year_id = ?
-//            AND term_id = ?
-//            AND is_finalized = TRUE`,
-//         [...studentIds, academic_year_id, term_id]
-//       );
-
-//       // Create map for quick lookup
-//       termBillsMap = termBills.reduce((acc, tb) => {
-//         acc[tb.student_id] = tb;
-//         return acc;
-//       }, {});
-//     }
-
-//     // ========== STEP 5: Build response with calculated totals ==========
-//     const responseBills = bills.map(bill => {
-//       const termBill = termBillsMap[bill.student_id];
-//       let finalAmount = parseFloat(bill.amount);
-//       let isSelected = true;
-      
-//       // Check if this bill is in the finalized term bill
-//       if (termBill && termBill.selected_bills) {
-//         let selectedData = termBill.selected_bills;
-//         if (typeof selectedData === "string") {
-//           try {
-//             selectedData = JSON.parse(selectedData);
-//           } catch (e) {
-//             selectedData = { bill_ids: [] };
-//           }
-//         }
-        
-//         const selectedBillIds = selectedData.bill_ids || [];
-//         const editedAmounts = selectedData.edited_amounts || {};
-        
-//         isSelected = selectedBillIds.includes(bill.id);
-        
-//         if (isSelected && editedAmounts[bill.id]) {
-//           finalAmount = parseFloat(editedAmounts[bill.id]);
-//         }
-//       }
-      
-//       return {
-//         ...bill,
-//         finalAmount,
-//         isSelected,
-//         hasCustomAmount: finalAmount !== parseFloat(bill.amount),
-//         originalAmount: parseFloat(bill.amount),
-//         status: bill.payment_status || "Pending",
-//       };
-//     });
-
-//     // Group bills by student for easier frontend consumption
-//     const groupedByStudent = {};
-//     responseBills.forEach(bill => {
-//       if (!groupedByStudent[bill.student_id]) {
-//         groupedByStudent[bill.student_id] = {
-//           student: {
-//             id: bill.student_id,
-//             name: `${bill.first_name} ${bill.last_name}`,
-//             admission_number: bill.admission_number,
-//             class_name: bill.class_name,
-//           },
-//           bills: [],
-//           finalizedBill: termBillsMap[bill.student_id] || null,
-//         };
-//       }
-//       groupedByStudent[bill.student_id].bills.push(bill);
-//     });
-
-//     // Flatten back to array for response
-//     const flatBills = Object.values(groupedByStudent).flatMap(group => 
-//       group.bills.map(bill => ({
-//         ...bill,
-//         student_name: group.student.name,
-//         student_admission: group.student.admission_number,
-//         class_name: group.student.class_name,
-//         has_finalized_bill: !!group.finalizedBill,
-//         finalized_bill_total: group.finalizedBill?.total_amount || null,
-//         finalized_bill_paid: group.finalizedBill?.paid_amount || null,
-//         finalized_bill_balance: group.finalizedBill?.remaining_balance || null,
-//       }))
-//     );
-
-//     // ========== STEP 6: Return paginated response ==========
-//     res.json({
-//       success: true,
-//       bills: flatBills,
-//       pagination: {
-//         page: pageNum,
-//         limit: limitNum,
-//         total: total,
-//         totalPages: totalPages,
-//         hasNextPage: pageNum < totalPages,
-//         hasPrevPage: pageNum > 1,
-//         startIndex: offset + 1,
-//         endIndex: Math.min(offset + limitNum, total),
-//       },
-//       filters: {
-//         class_id: class_id || null,
-//         academic_year_id: academic_year_id || null,
-//         term_id: term_id || null,
-//         status: status || "all",
-//         active_only: active_only === "true",
-//       },
-//       summary: {
-//         students_in_page: paginatedStudents.length,
-//         total_students_with_bills: total,
-//         total_bills_in_page: flatBills.length,
-//       },
-//       timestamp: new Date().toISOString(),
-//     });
-//   } catch (error) {
-//     console.error("Error fetching student bills:", error);
-//     res.status(500).json({ 
-//       error: "Failed to fetch student bills",
-//       details: process.env.NODE_ENV === "development" ? error.message : undefined,
-//     });
-//   }
-// };
-
 // GET /api/getstudentbills - Get student bills with pagination (FIXED FOR DUPLICATES)
 const getStudentBills = async (req, res) => {
   try {
@@ -7369,7 +7365,9 @@ const getStudentBills = async (req, res) => {
 
     // Active only filter
     if (active_only === "true") {
-      studentWhereConditions.push("(s.is_active IS NULL OR s.is_active = TRUE)");
+      studentWhereConditions.push(
+        "(s.is_active IS NULL OR s.is_active = TRUE)",
+      );
     }
 
     // ========== STEP 1: Get total count of UNIQUE students ==========
@@ -7383,7 +7381,7 @@ const getStudentBills = async (req, res) => {
          FROM students s
          INNER JOIN class_assignments ca ON s.id = ca.student_id
          WHERE ${studentWhereConditions.join(" AND ")}`,
-        queryParams
+        queryParams,
       );
 
       total = countResult[0].total;
@@ -7404,7 +7402,7 @@ const getStudentBills = async (req, res) => {
          WHERE ${studentWhereConditions.join(" AND ")}
          ORDER BY s.first_name, s.last_name
          LIMIT ? OFFSET ?`,
-        [...queryParams, limitNum, offset]
+        [...queryParams, limitNum, offset],
       );
     } else {
       // For specific student, get that student only
@@ -7420,9 +7418,9 @@ const getStudentBills = async (req, res) => {
          INNER JOIN class_assignments ca ON s.id = ca.student_id
          INNER JOIN classes c ON ca.class_id = c.id
          WHERE ${studentWhereConditions.join(" AND ")}`,
-        queryParams
+        queryParams,
       );
-      
+
       total = paginatedStudents.length;
       totalPages = 1;
     }
@@ -7444,7 +7442,7 @@ const getStudentBills = async (req, res) => {
     }
 
     // ========== STEP 3: Get bills for these specific students ==========
-    const studentIds = paginatedStudents.map(s => s.student_id);
+    const studentIds = paginatedStudents.map((s) => s.student_id);
     const placeholders = studentIds.map(() => "?").join(",");
 
     // Build bill query conditions
@@ -7498,7 +7496,7 @@ const getStudentBills = async (req, res) => {
        INNER JOIN classes c ON ca.class_id = c.id
        WHERE ${billConditions.join(" AND ")}
        ORDER BY s.first_name, s.last_name, b.due_date ASC`,
-      billParams
+      billParams,
     );
 
     // ========== STEP 4: Get finalized term bills for these students ==========
@@ -7520,7 +7518,7 @@ const getStudentBills = async (req, res) => {
            AND academic_year_id = ?
            AND term_id = ?
            AND is_finalized = TRUE`,
-        [...studentIds, academic_year_id, term_id]
+        [...studentIds, academic_year_id, term_id],
       );
 
       // Create map for quick lookup
@@ -7531,11 +7529,11 @@ const getStudentBills = async (req, res) => {
     }
 
     // ========== STEP 5: Build response with calculated totals ==========
-    const responseBills = bills.map(bill => {
+    const responseBills = bills.map((bill) => {
       const termBill = termBillsMap[bill.student_id];
       let finalAmount = parseFloat(bill.amount);
       let isSelected = true;
-      
+
       // Check if this bill is in the finalized term bill
       if (termBill && termBill.selected_bills) {
         let selectedData = termBill.selected_bills;
@@ -7546,17 +7544,17 @@ const getStudentBills = async (req, res) => {
             selectedData = { bill_ids: [] };
           }
         }
-        
+
         const selectedBillIds = selectedData.bill_ids || [];
         const editedAmounts = selectedData.edited_amounts || {};
-        
+
         isSelected = selectedBillIds.includes(bill.id);
-        
+
         if (isSelected && editedAmounts[bill.id]) {
           finalAmount = parseFloat(editedAmounts[bill.id]);
         }
       }
-      
+
       return {
         id: bill.id,
         student_id: bill.student_id,
@@ -7584,7 +7582,7 @@ const getStudentBills = async (req, res) => {
     // Remove duplicates by bill id (just in case)
     const uniqueBills = [];
     const seenBillIds = new Set();
-    
+
     for (const bill of responseBills) {
       if (!seenBillIds.has(bill.id)) {
         seenBillIds.add(bill.id);
@@ -7597,12 +7595,14 @@ const getStudentBills = async (req, res) => {
       return res.json({
         success: true,
         bills: uniqueBills,
-        student_info: paginatedStudents[0] ? {
-          id: paginatedStudents[0].student_id,
-          name: `${paginatedStudents[0].first_name} ${paginatedStudents[0].last_name}`,
-          admission_number: paginatedStudents[0].admission_number,
-          class_name: paginatedStudents[0].class_name,
-        } : null,
+        student_info: paginatedStudents[0]
+          ? {
+              id: paginatedStudents[0].student_id,
+              name: `${paginatedStudents[0].first_name} ${paginatedStudents[0].last_name}`,
+              admission_number: paginatedStudents[0].admission_number,
+              class_name: paginatedStudents[0].class_name,
+            }
+          : null,
         has_finalized_bill: !!termBillsMap[student_id],
         finalized_bill: termBillsMap[student_id] || null,
       });
@@ -7638,9 +7638,10 @@ const getStudentBills = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching student bills:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Failed to fetch student bills",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -7752,20 +7753,20 @@ const generateBillsFromTemplates = async (req, res) => {
     const currentYearLabel = currentYear[0]?.year_label;
 
     // Get count before deletion for reporting
-    await connection.query("SELECT COUNT(*) as total FROM student_arrears");
+    // await connection.query("SELECT COUNT(*) as total FROM student_arrears");
 
     // Delete all arrears
-    await connection.query("DELETE FROM student_arrears");
+    // await connection.query("DELETE FROM student_arrears");
 
     await connection.beginTransaction();
 
     // Get count before deletion for reporting
-    await connection.query(
-      "SELECT COUNT(*) as total FROM student_overpayments",
-    );
+    // await connection.query(
+    //   "SELECT COUNT(*) as total FROM student_overpayments",
+    // );
 
     // Delete all overpayments
-    await connection.query("DELETE FROM student_overpayments");
+    // await connection.query("DELETE FROM student_overpayments");
 
     // FIXED QUERY: Only carry balances from immediate previous term
     const [studentsWithImmediateBalances] = await connection.query(
@@ -8351,7 +8352,6 @@ const checkStudentPayments = async (req, res) => {
       [studentId, academic_year_id, term_id],
     );
 
-
     res.json({
       hasPayments: payments[0].payment_count > 0,
       paymentCount: payments[0].payment_count,
@@ -8647,25 +8647,115 @@ const addBillsToFinalizedTerm = async (req, res) => {
   }
 };
 
-// GET /api/student-arrears/:studentId - Get student arrears
+// // GET /api/student-arrears/:studentId - Get student arrears
+// const getStudentArrears = async (req, res) => {
+//   try {
+//     const { studentId } = req.params;
+//     const { academic_year_id, term_id } = req.query;
+
+//     let whereConditions = ["sa.student_id = ?"];
+//     let queryParams = [studentId];
+
+//     if (academic_year_id) {
+//       whereConditions.push("sa.academic_year_id = ?");
+//       queryParams.push(academic_year_id);
+//     }
+
+//     if (term_id) {
+//       whereConditions.push("sa.term_id = ?");
+//       queryParams.push(term_id);
+//     }
+
+//     const [arrears] = await pool.query(
+//       `SELECT sa.*, ay.year_label, t.term_name, u.username as created_by_name
+//        FROM student_arrears sa
+//        LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
+//        LEFT JOIN terms t ON sa.term_id = t.id
+//        LEFT JOIN users u ON sa.created_by = u.id
+//        WHERE ${whereConditions.join(" AND ")}
+//        ORDER BY sa.created_at DESC`,
+//       queryParams,
+//     );
+
+//     res.json(arrears);
+//   } catch (error) {
+//     console.error("Error fetching student arrears:", error);
+//     res.status(500).json({ error: "Failed to fetch student arrears" });
+//   }
+// };
+
+// GET /api/getstudentarrears/:studentId - Get student arrears with filters
 const getStudentArrears = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { academic_year_id, term_id } = req.query;
+    const {
+      academic_year_id,
+      term_id,
+      min_amount,
+      max_amount,
+      is_carried_forward,
+      start_date,
+      end_date,
+      limit = 100,
+      offset = 0,
+    } = req.query;
 
     let whereConditions = ["sa.student_id = ?"];
     let queryParams = [studentId];
 
+    // Academic year filter
     if (academic_year_id) {
       whereConditions.push("sa.academic_year_id = ?");
       queryParams.push(academic_year_id);
     }
 
+    // Term filter
     if (term_id) {
       whereConditions.push("sa.term_id = ?");
       queryParams.push(term_id);
     }
 
+    // Minimum amount filter
+    if (min_amount) {
+      whereConditions.push("sa.amount >= ?");
+      queryParams.push(parseFloat(min_amount));
+    }
+
+    // Maximum amount filter
+    if (max_amount) {
+      whereConditions.push("sa.amount <= ?");
+      queryParams.push(parseFloat(max_amount));
+    }
+
+    // Carried forward filter
+    if (is_carried_forward !== undefined) {
+      whereConditions.push("sa.is_carried_forward = ?");
+      queryParams.push(is_carried_forward === "true" ? 1 : 0);
+    }
+
+    // Date range filter
+    if (start_date && end_date) {
+      whereConditions.push("DATE(sa.created_at) BETWEEN ? AND ?");
+      queryParams.push(start_date, end_date);
+    } else if (start_date) {
+      whereConditions.push("DATE(sa.created_at) >= ?");
+      queryParams.push(start_date);
+    } else if (end_date) {
+      whereConditions.push("DATE(sa.created_at) <= ?");
+      queryParams.push(end_date);
+    }
+
+    // Get total count for pagination
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total
+       FROM student_arrears sa
+       WHERE ${whereConditions.join(" AND ")}`,
+      queryParams,
+    );
+
+    const total = countResult[0].total;
+
+    // Get paginated arrears
     const [arrears] = await pool.query(
       `SELECT sa.*, ay.year_label, t.term_name, u.username as created_by_name
        FROM student_arrears sa
@@ -8673,11 +8763,20 @@ const getStudentArrears = async (req, res) => {
        LEFT JOIN terms t ON sa.term_id = t.id
        LEFT JOIN users u ON sa.created_by = u.id
        WHERE ${whereConditions.join(" AND ")}
-       ORDER BY sa.created_at DESC`,
-      queryParams,
+       ORDER BY sa.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...queryParams, parseInt(limit), parseInt(offset)],
     );
 
-    res.json(arrears);
+    res.json({
+      arrears,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + parseInt(limit) < total,
+      },
+    });
   } catch (error) {
     console.error("Error fetching student arrears:", error);
     res.status(500).json({ error: "Failed to fetch student arrears" });
@@ -8790,61 +8889,130 @@ const deleteStudentArrear = async (req, res) => {
   }
 };
 
-// // DELETE /api/student-arrears - Delete ALL arrears (use with caution!)
-// const deleteAllArrears = async (req, res) => {
-//   const connection = await pool.getConnection();
+// GET /api/student-overpayments/:studentId - Get student overpayments
 
+// const getStudentOverpayments = async (req, res) => {
 //   try {
-//     await connection.beginTransaction();
+//     const { studentId } = req.params;
+//     const { academic_year_id, term_id } = req.query;
 
-//     // Get count before deletion for reporting
-//     const [countResult] = await connection.query(
-//       "SELECT COUNT(*) as total FROM student_arrears"
+//     let whereConditions = ["so.student_id = ?"];
+//     let queryParams = [studentId];
+
+//     if (academic_year_id) {
+//       whereConditions.push("so.academic_year_id = ?");
+//       queryParams.push(academic_year_id);
+//     }
+
+//     if (term_id) {
+//       whereConditions.push("so.term_id = ?");
+//       queryParams.push(term_id);
+//     }
+
+//     const [overpayments] = await pool.query(
+//       `SELECT so.*, ay.year_label, t.term_name, u.username as created_by_name
+//        FROM student_overpayments so
+//        LEFT JOIN academic_years ay ON so.academic_year_id = ay.id
+//        LEFT JOIN terms t ON so.term_id = t.id
+//        LEFT JOIN users u ON so.created_by = u.id
+//        WHERE ${whereConditions.join(" AND ")}
+//        ORDER BY so.created_at DESC`,
+//       queryParams,
 //     );
-//     const totalCount = countResult[0].total;
 
-//     // Delete all arrears
-//     const [result] = await connection.query("DELETE FROM student_arrears");
-
-//     await connection.commit();
-
-//     res.json({
-//       success: true,
-//       message: `Successfully deleted all student arrears`,
-//       deletedCount: totalCount,
-//     });
+//     res.json(overpayments);
 //   } catch (error) {
-//     await connection.rollback();
-//     console.error("Error deleting all arrears:", error);
-//     res.status(500).json({
-//       error: "Failed to delete arrears",
-//       details: error.message,
-//     });
-//   } finally {
-//     connection.release();
+//     console.error("Error fetching student overpayments:", error);
+//     res.status(500).json({ error: "Failed to fetch student overpayments" });
 //   }
 // };
 
-// GET /api/student-overpayments/:studentId - Get student overpayments
-
+// GET /api/getstudentoverpayments/:studentId - Get student overpayments with filters
 const getStudentOverpayments = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { academic_year_id, term_id } = req.query;
+    const {
+      academic_year_id,
+      term_id,
+      min_amount,
+      max_amount,
+      status,
+      is_credit_note,
+      can_refund,
+      start_date,
+      end_date,
+      limit = 100,
+      offset = 0,
+    } = req.query;
 
     let whereConditions = ["so.student_id = ?"];
     let queryParams = [studentId];
 
+    // Academic year filter
     if (academic_year_id) {
       whereConditions.push("so.academic_year_id = ?");
       queryParams.push(academic_year_id);
     }
 
+    // Term filter
     if (term_id) {
       whereConditions.push("so.term_id = ?");
       queryParams.push(term_id);
     }
 
+    // Minimum amount filter
+    if (min_amount) {
+      whereConditions.push("so.amount >= ?");
+      queryParams.push(parseFloat(min_amount));
+    }
+
+    // Maximum amount filter
+    if (max_amount) {
+      whereConditions.push("so.amount <= ?");
+      queryParams.push(parseFloat(max_amount));
+    }
+
+    // Status filter
+    if (status) {
+      whereConditions.push("so.status = ?");
+      queryParams.push(status);
+    }
+
+    // Credit note filter
+    if (is_credit_note !== undefined) {
+      whereConditions.push("so.is_credit_note = ?");
+      queryParams.push(is_credit_note === "true" ? 1 : 0);
+    }
+
+    // Can refund filter
+    if (can_refund !== undefined) {
+      whereConditions.push("so.can_refund = ?");
+      queryParams.push(can_refund === "true" ? 1 : 0);
+    }
+
+    // Date range filter
+    if (start_date && end_date) {
+      whereConditions.push("DATE(so.created_at) BETWEEN ? AND ?");
+      queryParams.push(start_date, end_date);
+    } else if (start_date) {
+      whereConditions.push("DATE(so.created_at) >= ?");
+      queryParams.push(start_date);
+    } else if (end_date) {
+      whereConditions.push("DATE(so.created_at) <= ?");
+      queryParams.push(end_date);
+    }
+
+    // Get total count for pagination
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total
+       FROM student_overpayments so
+       WHERE ${whereConditions.join(" AND ")}`,
+      queryParams,
+    );
+
+    const total = countResult[0].total;
+
+    // Get paginated overpayments
     const [overpayments] = await pool.query(
       `SELECT so.*, ay.year_label, t.term_name, u.username as created_by_name
        FROM student_overpayments so
@@ -8852,11 +9020,20 @@ const getStudentOverpayments = async (req, res) => {
        LEFT JOIN terms t ON so.term_id = t.id
        LEFT JOIN users u ON so.created_by = u.id
        WHERE ${whereConditions.join(" AND ")}
-       ORDER BY so.created_at DESC`,
-      queryParams,
+       ORDER BY so.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...queryParams, parseInt(limit), parseInt(offset)],
     );
 
-    res.json(overpayments);
+    res.json({
+      overpayments,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + parseInt(limit) < total,
+      },
+    });
   } catch (error) {
     console.error("Error fetching student overpayments:", error);
     res.status(500).json({ error: "Failed to fetch student overpayments" });
@@ -9824,7 +10001,6 @@ const getStudentsByClass = async (req, res) => {
 
 // CORRECTED Process Payment Function - Uses finalized bill as source of truth
 
-
 // Generate Receipt PDF
 
 const processPayment = async (req, res) => {
@@ -9844,7 +10020,6 @@ const processPayment = async (req, res) => {
       allocations,
       bill_descriptions,
     } = req.body;
-
 
     if (!student_id) {
       console.error("student_id is undefined in req.body");
@@ -13561,166 +13736,239 @@ const exportExpensesExcel = async (res, expenses, summary) => {
   }
 };
 
-// Helper: Export expenses to PDF
-// const exportExpensesPDF = async (res, expenses, summary) => {
-//   try {
-//     const doc = new jsPDF();
-//     const pageWidth = doc.internal.pageSize.getWidth();
-//     const pageHeight = doc.internal.pageSize.getHeight();
-//     const schoolSettings = await getSchoolSettingsForPDF();
-//     const primaryColor = [41, 128, 185];
+// GET /api/pv-headers/:id/export-pdf - Export single PV as PDF
+const exportSinglePVPDF = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-//     // Header with logo on left
-//     const headerHeight = 30;
-//     doc.setFillColor(41, 128, 185);
-//     doc.rect(0, 0, pageWidth, headerHeight, "F");
+    // Get PV details with items
+    const [pvHeaders] = await pool.query(
+      `SELECT 
+         pv.*,
+         u.username as recorded_by_name,
+         au.username as approved_by_name
+       FROM pv_headers pv
+       LEFT JOIN users u ON pv.recorded_by = u.id
+       LEFT JOIN users au ON pv.approved_by = au.id
+       WHERE pv.id = ?`,
+      [id],
+    );
 
-//     // Logo on left (if exists)
-//     const hasLogo = await addSchoolLogoToPDF(doc, 15, 5, 20, 20);
+    if (pvHeaders.length === 0) {
+      return res.status(404).json({ error: "PV not found" });
+    }
 
-//     doc.setTextColor(255, 255, 255);
-//     doc.setFontSize(20);
-//     doc.setFont("helvetica", "bold");
-//     doc.text(schoolSettings.school_name, hasLogo ? 50 : pageWidth / 2, 12, {
-//       align: hasLogo ? "left" : "center",
-//     });
+    const pv = pvHeaders[0];
 
-//     doc.setFontSize(16);
-//     doc.text("EXPENSES / PV REPORT", pageWidth / 2, 22, { align: "center" });
+    // Get items
+    const [items] = await pool.query(
+      `SELECT * FROM pv_items WHERE pv_header_id = ? ORDER BY id`,
+      [id],
+    );
 
-//     // Format date helper
-//     const formatDate = (dateStr) => {
-//       if (!dateStr) return "N/A";
-//       try {
-//         const date = new Date(dateStr);
-//         return date.toLocaleDateString("en-US", {
-//           year: "numeric",
-//           month: "short",
-//           day: "numeric",
-//         });
-//       } catch (error) {
-//         return dateStr;
-//       }
-//     };
+    pv.items = items;
 
-//     // Report period
-//     doc.setFontSize(10);
-//     doc.setTextColor(0, 0, 0);
-//     doc.setFont("helvetica", "normal");
+    // Generate PDF
+    const pdfBuffer = await generateSinglePVPDF(pv);
 
-//     doc.text(
-//       `Period: ${formatDate(summary["Start Date"])} to ${formatDate(
-//         summary["End Date"],
-//       )}`,
-//       20,
-//       40,
-//     );
-//     doc.text(
-//       `Generated: ${new Date().toLocaleDateString()}`,
-//       pageWidth - 20,
-//       40,
-//       {
-//         align: "right",
-//       },
-//     );
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="PV-${pv.pv_number}.pdf"`,
+    );
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error("Error exporting single PV:", error);
+    res.status(500).json({ error: "Failed to export PV" });
+  }
+};
 
-//     // Summary section
-//     let yPos = 50;
-//     doc.setFontSize(12);
-//     doc.setFont("helvetica", "bold");
-//     doc.text("SUMMARY", 20, yPos);
-//     yPos += 8;
+// Helper function to generate single PV PDF
+const generateSinglePVPDF = async (pv) => {
+  const { jsPDF } = require("jspdf");
+  const { autoTable } = require("jspdf-autotable");
 
-//     doc.setFontSize(10);
-//     doc.setFont("helvetica", "normal");
-//     const summaryLines = [
-//       `Total Expenses: ${summary["Total Expenses"] || 0}`,
-//       `Total Amount: Ghc ${parseFloat(summary["Total Amount"] || 0).toFixed(
-//         2,
-//       )}`,
-//       `Average Amount: Ghc ${parseFloat(summary["Average Amount"] || 0).toFixed(
-//         2,
-//       )}`,
-//     ];
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
-//     summaryLines.forEach((line, index) => {
-//       doc.text(line, 20, yPos + index * 5);
-//     });
+  // Get school settings
+  const schoolSettings = await getSchoolSettingsForPDF();
+  const primaryColor = [41, 128, 185];
 
-//     yPos += summaryLines.length * 5 + 10;
+  // Helper function to format date
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "N/A";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch (error) {
+      return dateStr;
+    }
+  };
 
-//     // Table data
-//     const tableData = expenses.map((expense) => [
-//       expense["Voucher Number"] || "",
-//       formatDate(expense["Date"]),
-//       expense["Category"] || "",
-//       expense["Description"]?.substring(0, 30) +
-//         (expense["Description"]?.length > 30 ? "..." : "") || "",
-//       expense["Paid To"]?.substring(0, 20) +
-//         (expense["Paid To"]?.length > 20 ? "..." : "") || "",
-//       `Ghc ${parseFloat(expense["Amount"] || 0).toFixed(2)}`,
-//       expense["Payment Method"] || "",
-//     ]);
+  const formatCurrency = (amount) => {
+    return `Ghc ${parseFloat(amount || 0).toFixed(2)}`;
+  };
 
-//     // Generate table
-//     autoTable(doc, {
-//       startY: yPos,
-//       head: [
-//         [
-//           "Voucher No",
-//           "Date",
-//           "Category",
-//           "Description",
-//           "Paid To",
-//           "Amount",
-//           "Method",
-//         ],
-//       ],
-//       body: tableData,
-//       headStyles: {
-//         fillColor: primaryColor,
-//         textColor: [255, 255, 255],
-//         fontStyle: "bold",
-//         fontSize: 9,
-//       },
-//       bodyStyles: {
-//         fontSize: 8,
-//         cellPadding: 2,
-//       },
-//       alternateRowStyles: {
-//         fillColor: [248, 248, 248],
-//       },
-//       styles: {
-//         overflow: "linebreak",
-//         cellWidth: "wrap",
-//       },
-//       margin: { left: 10, right: 10 },
-//       didDrawPage: (data) => {
-//         const pageCount = doc.internal.getNumberOfPages();
-//         doc.setFontSize(8);
-//         doc.setTextColor(100, 100, 100);
-//         doc.text(
-//           `Page ${data.pageNumber} of ${pageCount}`,
-//           pageWidth / 2,
-//           pageHeight - 10,
-//           { align: "center" },
-//         );
-//       },
-//     });
+  // Header with logo
+  const hasLogo = await addSchoolLogoToPDF(doc, 15, 10, 20, 20);
+  const schoolNameX = hasLogo ? 40 : 20;
 
-//     res.setHeader("Content-Type", "application/pdf");
-//     res.setHeader(
-//       "Content-Disposition",
-//       `attachment; filename="expenses-${
-//         new Date().toISOString().split("T")[0]
-//       }.pdf"`,
-//     );
-//     res.send(Buffer.from(doc.output("arraybuffer")));
-//   } catch (error) {
-//     console.error("Error creating PDF:", error);
-//     throw error;
-//   }
-// };
+  // School name
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...primaryColor);
+  doc.text(schoolSettings.school_name, schoolNameX, 18);
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+  if (schoolSettings.motto) {
+    doc.text(schoolSettings.motto, schoolNameX, 24);
+  }
+
+  // Title
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...primaryColor);
+  doc.text("PAYMENT VOUCHER (PV)", pageWidth / 2, 35, { align: "center" });
+
+  // PV Number and Date
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0, 0, 0);
+  doc.text(`PV No: ${pv.pv_number}`, pageWidth - 50, 35);
+  doc.text(`Date: ${formatDate(pv.pv_date)}`, pageWidth - 50, 41);
+  doc.text(`Status: ${pv.status}`, pageWidth - 50, 47);
+
+  let yPosition = 55;
+
+  // Divider
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.line(15, yPosition, pageWidth - 15, yPosition);
+  yPosition += 8;
+
+  // Payment Details
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text("PAYMENT DETAILS", 15, yPosition);
+  yPosition += 8;
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+
+  const paymentDetails = [
+    { label: "Payee (Paid To):", value: pv.paid_to || "N/A" },
+    { label: "Payment Method:", value: pv.payment_method || "Cash" },
+    { label: "Reference Number:", value: pv.reference_number || "N/A" },
+    { label: "Description:", value: pv.description || "N/A" },
+  ];
+
+  paymentDetails.forEach((detail) => {
+    doc.setFont("helvetica", "bold");
+    doc.text(detail.label, 15, yPosition);
+    doc.setFont("helvetica", "normal");
+    doc.text(detail.value, 55, yPosition);
+    yPosition += 6;
+  });
+
+  yPosition += 8;
+
+  // Items Table
+  if (pv.items && pv.items.length > 0) {
+    const tableData = pv.items.map((item) => [
+      item.expense_category,
+      item.quantity.toString(),
+      formatCurrency(item.unit_price),
+      formatCurrency(item.amount || item.quantity * item.unit_price),
+      item.description?.substring(0, 40) || "-",
+    ]);
+
+    autoTable(doc, {
+      startY: yPosition,
+      head: [["Category", "Qty", "Unit Price", "Amount", "Description"]],
+      body: tableData,
+      headStyles: {
+        fillColor: primaryColor,
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 9,
+      },
+      bodyStyles: { fontSize: 8, cellPadding: 2 },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 15, halign: "center" },
+        2: { cellWidth: 25, halign: "right" },
+        3: { cellWidth: 25, halign: "right" },
+        4: { cellWidth: "auto" },
+      },
+      margin: { left: 15, right: 15 },
+    });
+
+    yPosition = doc.lastAutoTable.finalY + 8;
+  }
+
+  // Total Amount Box
+  doc.setFillColor(...primaryColor);
+  doc.rect(15, yPosition, pageWidth - 30, 10, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("TOTAL AMOUNT:", 20, yPosition + 6.5);
+  doc.text(formatCurrency(pv.total_amount), pageWidth - 20, yPosition + 6.5, {
+    align: "right",
+  });
+  doc.setTextColor(0, 0, 0);
+  yPosition += 18;
+
+  // Approval Info
+  if (pv.approved_by_name) {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("APPROVAL INFORMATION", 15, yPosition);
+    yPosition += 6;
+    doc.setFont("helvetica", "normal");
+    doc.text(`Approved By: ${pv.approved_by_name}`, 15, yPosition);
+    doc.text(
+      `Approved At: ${pv.approved_at ? new Date(pv.approved_at).toLocaleString() : "N/A"}`,
+      100,
+      yPosition,
+    );
+    yPosition += 10;
+  }
+
+  // Recorded By
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Recorded By: ${pv.recorded_by_name || "N/A"}`, 15, yPosition);
+  yPosition += 15;
+
+  // Footer
+  const footerY = pageHeight - 15;
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.line(15, footerY - 8, pageWidth - 15, footerY - 8);
+
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text(
+    `Generated on ${new Date().toLocaleDateString()} | ${schoolSettings.school_name}`,
+    pageWidth / 2,
+    footerY - 3,
+    { align: "center" },
+  );
+  doc.text(`PV: ${pv.pv_number}`, pageWidth / 2, footerY, { align: "center" });
+
+  return Buffer.from(doc.output("arraybuffer"));
+};
 
 // ==================== PV EXPORT FUNCTIONS ====================
 
@@ -14260,7 +14508,7 @@ const getSchoolSettings = async (req, res) => {
       // Return default settings if none exist
       return res.json({
         id: null,
-        school_name: "School Manager Academy",
+        school_name: "School Manager",
         school_short_name: "SMA",
         motto: "Quality Education for All",
         address: "123 Education Street, Learning City",
@@ -15163,13 +15411,17 @@ const sendBalanceReminder = async (req, res) => {
     }
 
     // Initialize results
-    let emailResult = { success: false, message: "No email sent", messageId: null };
+    let emailResult = {
+      success: false,
+      message: "No email sent",
+      messageId: null,
+    };
     let smsResult = { success: false, message: "No SMS sent", messageId: null };
 
     // ========== SEND EMAIL ==========
     if (student.parent_email) {
       const emailService = require("../utils/emailServices");
-      
+
       const balanceData = {
         remaining_balance: student.remaining_balance,
         total_amount: student.total_amount,
@@ -15177,7 +15429,7 @@ const sendBalanceReminder = async (req, res) => {
         academic_year: student.academic_year,
         term_name: student.term_name,
       };
-      
+
       emailResult = await emailService.sendBalanceReminder(
         student,
         balanceData,
@@ -15194,7 +15446,7 @@ const sendBalanceReminder = async (req, res) => {
           student.parent_email,
           emailResult.success ? "sent" : "failed",
           emailResult.messageId || null,
-          emailResult.success ? null : (emailResult.message || "Unknown error"),
+          emailResult.success ? null : emailResult.message || "Unknown error",
         ],
       );
     } else {
@@ -15204,7 +15456,7 @@ const sendBalanceReminder = async (req, res) => {
     // ========== SEND SMS ==========
     if (student.parent_contact) {
       const smsService = require("../utils/smsService");
-      
+
       const balanceData = {
         remaining_balance: student.remaining_balance,
         total_amount: student.total_amount,
@@ -15213,15 +15465,15 @@ const sendBalanceReminder = async (req, res) => {
         term_name: student.term_name,
         due_date: "end of term",
       };
-      
+
       // Format phone number
-      let cleanPhone = student.parent_contact.toString().replace(/\s+/g, '');
-      if (!cleanPhone.startsWith('233')) {
-        cleanPhone = cleanPhone.replace(/^0/, '233');
+      let cleanPhone = student.parent_contact.toString().replace(/\s+/g, "");
+      if (!cleanPhone.startsWith("233")) {
+        cleanPhone = cleanPhone.replace(/^0/, "233");
       }
-      
+
       smsResult = await smsService.sendBalanceReminderSMS(student, balanceData);
-      
+
       // Log SMS explicitly (in case smsService doesn't log properly)
       await connection.query(
         `INSERT INTO sms_logs 
@@ -15230,10 +15482,13 @@ const sendBalanceReminder = async (req, res) => {
         [
           student_id,
           cleanPhone,
-          smsResult.message?.substring(0, 500) || `Balance reminder for ${student.first_name} ${student.last_name}: Ghc ${student.remaining_balance}`,
+          smsResult.message?.substring(0, 500) ||
+            `Balance reminder for ${student.first_name} ${student.last_name}: Ghc ${student.remaining_balance}`,
           smsResult.success ? "sent" : "failed",
           smsResult.messageId || null,
-          smsResult.success ? null : (smsResult.error || smsResult.message || "Unknown error"),
+          smsResult.success
+            ? null
+            : smsResult.error || smsResult.message || "Unknown error",
         ],
       );
     } else {
@@ -15466,7 +15721,6 @@ const getEmailStats = async (req, res) => {
   }
 };
 
-
 // Send bulk balance reminders (Email + SMS)
 
 const sendBulkBalanceReminders = async (req, res) => {
@@ -15630,7 +15884,8 @@ const sendBulkBalanceReminders = async (req, res) => {
           );
 
           reminderResult.email.sent = emailResult.success;
-          reminderResult.email.message = emailResult.message || 
+          reminderResult.email.message =
+            emailResult.message ||
             (emailResult.success ? "Email sent" : "Email failed");
 
           // Log email
@@ -15648,7 +15903,7 @@ const sendBulkBalanceReminders = async (req, res) => {
         } catch (error) {
           reminderResult.email.sent = false;
           reminderResult.email.message = error.message;
-          
+
           await connection.query(
             `INSERT INTO email_logs 
              (student_id, email_type, recipient_email, status, error_message, sent_at) 
@@ -15670,13 +15925,17 @@ const sendBulkBalanceReminders = async (req, res) => {
             term_name: student.term_name,
             due_date: "end of term",
           };
-          
-          const smsResult = await smsService.sendBalanceReminderSMS(student, balanceData);
-          
+
+          const smsResult = await smsService.sendBalanceReminderSMS(
+            student,
+            balanceData,
+          );
+
           reminderResult.sms.sent = smsResult.success;
-          reminderResult.sms.message = smsResult.message || 
+          reminderResult.sms.message =
+            smsResult.message ||
             (smsResult.success ? "SMS sent" : "SMS failed");
-          
+
           // Note: SMS logging is handled inside sendSMS function
         } catch (error) {
           reminderResult.sms.sent = false;
@@ -15691,10 +15950,12 @@ const sendBulkBalanceReminders = async (req, res) => {
     }
 
     // Calculate summary
-    const sentCount = results.filter(r => r.email.sent || r.sms.sent).length;
-    const emailSentCount = results.filter(r => r.email.sent).length;
-    const smsSentCount = results.filter(r => r.sms.sent).length;
-    const failedCount = results.filter(r => !r.email.sent && !r.sms.sent).length;
+    const sentCount = results.filter((r) => r.email.sent || r.sms.sent).length;
+    const emailSentCount = results.filter((r) => r.email.sent).length;
+    const smsSentCount = results.filter((r) => r.sms.sent).length;
+    const failedCount = results.filter(
+      (r) => !r.email.sent && !r.sms.sent,
+    ).length;
 
     res.json({
       success: true,
@@ -15773,7 +16034,7 @@ const getSmsLogs = async (req, res) => {
     // Get total count
     const [countResult] = await pool.query(
       `SELECT COUNT(*) as total FROM sms_logs sl WHERE ${whereConditions.join(" AND ")}`,
-      queryParams
+      queryParams,
     );
 
     const total = countResult[0].total;
@@ -15790,7 +16051,7 @@ const getSmsLogs = async (req, res) => {
        WHERE ${whereConditions.join(" AND ")}
        ORDER BY sl.sent_at DESC
        LIMIT ? OFFSET ?`,
-      [...queryParams, limitNum, offset]
+      [...queryParams, limitNum, offset],
     );
 
     res.json({
@@ -15839,7 +16100,7 @@ const getSmsStats = async (req, res) => {
          COUNT(DISTINCT student_id) as unique_students
        FROM sms_logs
        WHERE ${dateCondition}`,
-      params
+      params,
     );
 
     // Breakdown by SMS type
@@ -15853,7 +16114,7 @@ const getSmsStats = async (req, res) => {
        WHERE ${dateCondition}
        GROUP BY type
        ORDER BY sent_count DESC`,
-      params
+      params,
     );
 
     // Daily activity
@@ -15868,7 +16129,7 @@ const getSmsStats = async (req, res) => {
        GROUP BY DATE(sent_at)
        ORDER BY date DESC
        LIMIT 30`,
-      params
+      params,
     );
 
     res.json({
@@ -15897,15 +16158,15 @@ const getClassPerformanceAssessment = async (req, res) => {
     const { class_id, academic_year_id, term_id } = req.query;
 
     if (!class_id || !academic_year_id || !term_id) {
-      return res.status(400).json({ 
-        error: "Class ID, Academic Year ID, and Term ID are required" 
+      return res.status(400).json({
+        error: "Class ID, Academic Year ID, and Term ID are required",
       });
     }
 
     // Get class info
     const [classInfo] = await pool.query(
       "SELECT class_name FROM classes WHERE id = ?",
-      [class_id]
+      [class_id],
     );
 
     // Get all students in the class
@@ -15921,7 +16182,7 @@ const getClassPerformanceAssessment = async (req, res) => {
          AND ca.academic_year_id = ?
          AND (s.is_active IS NULL OR s.is_active = TRUE)
        ORDER BY s.first_name, s.last_name`,
-      [class_id, academic_year_id]
+      [class_id, academic_year_id],
     );
 
     if (students.length === 0) {
@@ -15944,7 +16205,7 @@ const getClassPerformanceAssessment = async (req, res) => {
       });
     }
 
-    const studentIds = students.map(s => s.student_id);
+    const studentIds = students.map((s) => s.student_id);
     const placeholders = studentIds.map(() => "?").join(",");
 
     // Get all subjects for this class
@@ -15957,10 +16218,10 @@ const getClassPerformanceAssessment = async (req, res) => {
        INNER JOIN subject_assignments sa ON s.id = sa.subject_id
        WHERE sa.class_id = ? 
          AND sa.academic_year_id = ?`,
-      [class_id, academic_year_id]
+      [class_id, academic_year_id],
     );
 
-    // Get grades for all students - REMOVED g.grade column
+    // Get grades for all students
     const [grades] = await pool.query(
       `SELECT 
          g.student_id,
@@ -15971,7 +16232,7 @@ const getClassPerformanceAssessment = async (req, res) => {
          AND g.academic_year_id = ?
          AND g.term_id = ?
          AND g.subject_total IS NOT NULL`,
-      [...studentIds, academic_year_id, term_id]
+      [...studentIds, academic_year_id, term_id],
     );
 
     // Helper function to calculate grade from score
@@ -15989,10 +16250,15 @@ const getClassPerformanceAssessment = async (req, res) => {
     const studentGrades = {};
 
     for (const student of students) {
-      const studentGradesList = grades.filter(g => g.student_id === student.student_id);
-      
+      const studentGradesList = grades.filter(
+        (g) => g.student_id === student.student_id,
+      );
+
       if (studentGradesList.length > 0) {
-        const totalScore = studentGradesList.reduce((sum, g) => sum + parseFloat(g.score), 0);
+        const totalScore = studentGradesList.reduce(
+          (sum, g) => sum + parseFloat(g.score),
+          0,
+        );
         const averageScore = totalScore / studentGradesList.length;
         studentAverages[student.student_id] = averageScore;
         studentGrades[student.student_id] = calculateGrade(averageScore);
@@ -16003,85 +16269,103 @@ const getClassPerformanceAssessment = async (req, res) => {
     }
 
     // Sort students by average score
-    const sortedStudents = [...students].sort((a, b) => 
-      studentAverages[b.student_id] - studentAverages[a.student_id]
+    const sortedStudents = [...students].sort(
+      (a, b) => studentAverages[b.student_id] - studentAverages[a.student_id],
     );
 
     // Calculate class summary
-    const validAverages = Object.values(studentAverages).filter(avg => avg > 0);
-    const classAverage = validAverages.length > 0 
-      ? validAverages.reduce((sum, avg) => sum + avg, 0) / validAverages.length 
-      : 0;
-    
+    const validAverages = Object.values(studentAverages).filter(
+      (avg) => avg > 0,
+    );
+    const classAverage =
+      validAverages.length > 0
+        ? validAverages.reduce((sum, avg) => sum + avg, 0) /
+          validAverages.length
+        : 0;
+
     const highestScore = Math.max(...validAverages, 0);
     const lowestScore = Math.min(...validAverages, 0);
     const topStudentId = Object.keys(studentAverages).find(
-      id => studentAverages[id] === highestScore
+      (id) => studentAverages[id] === highestScore,
     );
-    const topStudent = students.find(s => s.student_id === parseInt(topStudentId));
-    
-    const passedStudents = validAverages.filter(avg => avg >= 50).length;
-    const passRate = validAverages.length > 0 ? (passedStudents / validAverages.length) * 100 : 0;
+    const topStudent = students.find(
+      (s) => s.student_id === parseInt(topStudentId),
+    );
+
+    const passedStudents = validAverages.filter((avg) => avg >= 50).length;
+    const passRate =
+      validAverages.length > 0
+        ? (passedStudents / validAverages.length) * 100
+        : 0;
 
     // Calculate grade distribution
     const gradeCounts = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
-    Object.values(studentGrades).forEach(grade => {
+    Object.values(studentGrades).forEach((grade) => {
       if (gradeCounts[grade] !== undefined) gradeCounts[grade]++;
     });
 
-    const gradeDistribution = Object.entries(gradeCounts).map(([grade, count]) => ({
-      grade,
-      count,
-      percentage: students.length > 0 ? (count / students.length) * 100 : 0,
-    }));
+    const gradeDistribution = Object.entries(gradeCounts).map(
+      ([grade, count]) => ({
+        grade,
+        count,
+        percentage: students.length > 0 ? (count / students.length) * 100 : 0,
+      }),
+    );
 
     // Calculate subject-wise performance
     const subjectPerformance = [];
-    
+
     for (const subject of subjects) {
-      const subjectGrades = grades.filter(g => g.subject_id === subject.subject_id);
-      
+      const subjectGrades = grades.filter(
+        (g) => g.subject_id === subject.subject_id,
+      );
+
       if (subjectGrades.length > 0) {
-        const scores = subjectGrades.map(g => parseFloat(g.score));
+        const scores = subjectGrades.map((g) => parseFloat(g.score));
         const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
         const highest = Math.max(...scores);
         const lowest = Math.min(...scores);
-        const passed = scores.filter(s => s >= 50).length;
+        const passed = scores.filter((s) => s >= 50).length;
         const passRateSubject = (passed / scores.length) * 100;
-        
+
         // Get top performers
         const topPerformers = [...subjectGrades]
           .sort((a, b) => b.score - a.score)
           .slice(0, 3)
-          .map(g => {
-            const student = students.find(s => s.student_id === g.student_id);
+          .map((g) => {
+            const student = students.find((s) => s.student_id === g.student_id);
             return {
               student_id: g.student_id,
-              student_name: student ? `${student.first_name} ${student.last_name}` : "Unknown",
+              student_name: student
+                ? `${student.first_name} ${student.last_name}`
+                : "Unknown",
               score: parseFloat(g.score),
             };
           });
-        
+
         // Get lowest performers
         const lowestPerformers = [...subjectGrades]
           .sort((a, b) => a.score - b.score)
           .slice(0, 3)
-          .map(g => {
-            const student = students.find(s => s.student_id === g.student_id);
+          .map((g) => {
+            const student = students.find((s) => s.student_id === g.student_id);
             return {
               student_id: g.student_id,
-              student_name: student ? `${student.first_name} ${student.last_name}` : "Unknown",
+              student_name: student
+                ? `${student.first_name} ${student.last_name}`
+                : "Unknown",
               score: parseFloat(g.score),
             };
           });
-        
+
         // Calculate grade distribution for subject
         const subjectGradeCounts = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
-        subjectGrades.forEach(g => {
+        subjectGrades.forEach((g) => {
           const grade = calculateGrade(parseFloat(g.score));
-          if (subjectGradeCounts[grade] !== undefined) subjectGradeCounts[grade]++;
+          if (subjectGradeCounts[grade] !== undefined)
+            subjectGradeCounts[grade]++;
         });
-        
+
         const distribution = {
           A: (subjectGradeCounts.A / subjectGrades.length) * 100,
           B: (subjectGradeCounts.B / subjectGrades.length) * 100,
@@ -16090,7 +16374,7 @@ const getClassPerformanceAssessment = async (req, res) => {
           E: (subjectGradeCounts.E / subjectGrades.length) * 100,
           F: (subjectGradeCounts.F / subjectGrades.length) * 100,
         };
-        
+
         subjectPerformance.push({
           subject_id: subject.subject_id,
           subject_name: subject.subject_name,
@@ -16121,15 +16405,19 @@ const getClassPerformanceAssessment = async (req, res) => {
 
     // Prepare student performance data
     const studentPerformance = sortedStudents.map((student, index) => {
-      const studentGradeList = grades.filter(g => g.student_id === student.student_id);
-      const subjectsPassed = studentGradeList.filter(g => parseFloat(g.score) >= 50).length;
+      const studentGradeList = grades.filter(
+        (g) => g.student_id === student.student_id,
+      );
+      const subjectsPassed = studentGradeList.filter(
+        (g) => parseFloat(g.score) >= 50,
+      ).length;
       const averageScore = studentAverages[student.student_id] || 0;
-      
+
       // Simple trend (you can enhance this with previous term data)
       let performanceTrend = "stable";
       if (index < sortedStudents.length * 0.3) performanceTrend = "up";
       else if (index > sortedStudents.length * 0.7) performanceTrend = "down";
-      
+
       return {
         student_id: student.student_id,
         student_name: `${student.first_name} ${student.last_name}`,
@@ -16154,7 +16442,9 @@ const getClassPerformanceAssessment = async (req, res) => {
         class_average: classAverage,
         highest_score: highestScore,
         lowest_score: lowestScore,
-        top_student: topStudent ? `${topStudent.first_name} ${topStudent.last_name}` : "",
+        top_student: topStudent
+          ? `${topStudent.first_name} ${topStudent.last_name}`
+          : "",
         pass_rate: passRate,
         passed_students: passedStudents,
       },
@@ -16162,9 +16452,202 @@ const getClassPerformanceAssessment = async (req, res) => {
     });
   } catch (error) {
     console.error("Error getting class performance assessment:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Failed to get assessment data",
-      details: error.message 
+      details: error.message,
+    });
+  }
+};
+
+// Simpler version - process JSON in JavaScript instead of MySQL
+const getStudentsByBillCategory = async (req, res) => {
+  try {
+    const {
+      academic_year_id,
+      term_id,
+      fee_category_id,
+      search = "",
+      page = 1,
+      limit = 100,
+    } = req.query;
+
+    if (!academic_year_id || !term_id || !fee_category_id) {
+      return res.status(400).json({
+        error: "academic_year_id, term_id, and fee_category_id are required",
+      });
+    }
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    let whereConditions = [
+      "bt.fee_category_id = ?",
+      "bt.academic_year_id = ?",
+      "bt.term_id = ?",
+      "stb.is_finalized = TRUE",
+      "(s.is_active IS NULL OR s.is_active = TRUE)",
+    ];
+    let queryParams = [fee_category_id, academic_year_id, term_id];
+
+    // Search filter
+    if (search) {
+      whereConditions.push(
+        "(s.first_name LIKE ? OR s.last_name LIKE ? OR s.admission_number LIKE ?)",
+      );
+      queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    // Get total count
+    const [countResult] = await pool.query(
+      `SELECT COUNT(DISTINCT s.id) as total
+       FROM students s
+       INNER JOIN class_assignments ca ON s.id = ca.student_id 
+         AND ca.academic_year_id = ?
+       INNER JOIN bills b ON s.id = b.student_id
+       INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
+       INNER JOIN student_term_bills stb ON s.id = stb.student_id 
+         AND stb.academic_year_id = bt.academic_year_id 
+         AND stb.term_id = bt.term_id
+       WHERE ${whereConditions.join(" AND ")}`,
+      [academic_year_id, ...queryParams],
+    );
+
+    const total = countResult[0].total;
+    const totalPages = Math.ceil(total / limitNum);
+
+    // Get paginated data - without JSON processing in SQL
+    queryParams.push(limitNum, offset);
+    const [students] = await pool.query(
+      `SELECT 
+         s.id as student_id,
+         s.first_name,
+         s.last_name,
+         s.admission_number,
+         c.class_name,
+         c.id as class_id,
+         b.id as bill_id,
+         b.amount as bill_amount,
+         b.paid_amount as bill_paid_amount,
+         b.remaining_amount as bill_remaining_amount,
+         COALESCE(b.description, bt.description) as bill_description,
+         bt.is_compulsory,
+         b.due_date,
+         bt.fee_category_id,
+         fc.category_name,
+         stb.total_amount,
+         stb.paid_amount,
+         stb.remaining_balance,
+         stb.selected_bills
+       FROM students s
+       INNER JOIN class_assignments ca ON s.id = ca.student_id 
+         AND ca.academic_year_id = ?
+       INNER JOIN classes c ON ca.class_id = c.id
+       INNER JOIN bills b ON s.id = b.student_id
+       INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
+       INNER JOIN fee_categories fc ON bt.fee_category_id = fc.id
+       INNER JOIN student_term_bills stb ON s.id = stb.student_id 
+         AND stb.academic_year_id = bt.academic_year_id 
+         AND stb.term_id = bt.term_id
+       WHERE ${whereConditions.join(" AND ")}
+       ORDER BY c.class_name, s.first_name, s.last_name
+       LIMIT ? OFFSET ?`,
+      [academic_year_id, ...queryParams],
+    );
+
+    // Process JSON data in JavaScript
+    const processedStudents = students.map((student) => {
+      let hasCustomAmount = false;
+      let finalAmount = student.bill_amount;
+
+      if (student.selected_bills) {
+        try {
+          const selectedData =
+            typeof student.selected_bills === "string"
+              ? JSON.parse(student.selected_bills)
+              : student.selected_bills;
+
+          const editedAmounts = selectedData.edited_amounts || {};
+          if (editedAmounts[student.bill_id] !== undefined) {
+            hasCustomAmount = true;
+            finalAmount = editedAmounts[student.bill_id];
+          }
+        } catch (e) {
+          // If JSON parsing fails, use the original amount
+          finalAmount = student.bill_amount;
+        }
+      }
+
+      return {
+        ...student,
+        has_custom_amount: hasCustomAmount,
+        final_amount: finalAmount,
+        selected_bills: undefined, // Remove the raw JSON
+      };
+    });
+
+    // Get summary statistics
+    const [summary] = await pool.query(
+      `SELECT 
+         COUNT(DISTINCT s.id) as total_students,
+         COALESCE(SUM(b.amount), 0) as total_amount,
+         COALESCE(AVG(b.amount), 0) as average_amount,
+         MIN(b.amount) as min_amount,
+         MAX(b.amount) as max_amount,
+         COUNT(DISTINCT c.id) as total_classes
+       FROM students s
+       INNER JOIN class_assignments ca ON s.id = ca.student_id 
+         AND ca.academic_year_id = ?
+       INNER JOIN classes c ON ca.class_id = c.id
+       INNER JOIN bills b ON s.id = b.student_id
+       INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
+       INNER JOIN student_term_bills stb ON s.id = stb.student_id 
+         AND stb.academic_year_id = bt.academic_year_id 
+         AND stb.term_id = bt.term_id
+       WHERE ${whereConditions.join(" AND ")}`,
+      [academic_year_id, ...queryParams.slice(0, -2)],
+    );
+
+    // Get class breakdown
+    const [classBreakdown] = await pool.query(
+      `SELECT 
+         c.id as class_id,
+         c.class_name,
+         COUNT(DISTINCT s.id) as student_count,
+         COALESCE(SUM(b.amount), 0) as total_amount
+       FROM students s
+       INNER JOIN class_assignments ca ON s.id = ca.student_id 
+         AND ca.academic_year_id = ?
+       INNER JOIN classes c ON ca.class_id = c.id
+       INNER JOIN bills b ON s.id = b.student_id
+       INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
+       INNER JOIN student_term_bills stb ON s.id = stb.student_id 
+         AND stb.academic_year_id = bt.academic_year_id 
+         AND stb.term_id = bt.term_id
+       WHERE ${whereConditions.slice(0, -1).join(" AND ")}
+       GROUP BY c.id, c.class_name
+       ORDER BY c.class_name`,
+      [academic_year_id, fee_category_id, academic_year_id, term_id],
+    );
+
+    res.json({
+      students: processedStudents,
+      summary: summary[0] || {},
+      class_breakdown: classBreakdown,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching students by bill category:", error);
+    res.status(500).json({
+      error: "Failed to fetch students by bill category",
+      details: error.message,
     });
   }
 };
@@ -16221,6 +16704,7 @@ module.exports = {
   deleteClassAssignment,
 
   getStudents,
+  getAllStudentsForArrears,
   createStudent,
   updateStudent,
   deactivateStudent,
@@ -16326,6 +16810,7 @@ module.exports = {
   getExpenseStatistics,
   getExpenseCategories,
   exportExpenses,
+  exportSinglePVPDF,
 
   // School Settings
   getSchoolSettings,
@@ -16349,5 +16834,7 @@ module.exports = {
 
   exportPVHeaders,
 
-  getClassPerformanceAssessment
+  getClassPerformanceAssessment,
+
+  getStudentsByBillCategory,
 };

@@ -287,7 +287,6 @@ const StudentsList = () => {
             },
           },
         );
-        console.log("Update response:", response.data);
         alert(response.data.message || "Student updated successfully!");
       } else {
         await api.post("/createstudent", studentData, {
@@ -470,10 +469,10 @@ const StudentsList = () => {
             {inactiveStudentsCount}
           </p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow border">
+        {/* <div className="bg-white p-4 rounded-lg shadow border">
           <p className="text-sm text-gray-600">Fee Block</p>
           <p className="text-2xl font-bold text-red-600">{feeBlockCount}</p>
-        </div>
+        </div> */}
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="flex items-center justify-between">
             <div>
@@ -525,7 +524,7 @@ const StudentsList = () => {
               <option value="all">All Students</option>
               <option value="active">Active Only</option>
               <option value="inactive">Inactive Only</option>
-              <option value="fee_block">Fee Block Only</option>
+              {/* <option value="fee_block">Fee Block Only</option> */}
             </select>
           </div>
           <div>

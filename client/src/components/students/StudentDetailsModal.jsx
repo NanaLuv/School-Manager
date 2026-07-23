@@ -55,7 +55,7 @@ const StudentDetailsModal = ({ student, isOpen, onClose }) => {
               {student.photo_filename ? (
                 <div className="relative">
                   <img
-                    src={`http://localhost:3001/uploads/students/${student.photo_filename}`}
+                    src={`/uploads/students/${student.photo_filename}`}
                     alt={`${student.first_name} ${student.last_name}`}
                     className={`h-16 w-16 rounded-full object-cover border-4 border-white shadow-lg ${
                       !imageLoaded ? "hidden" : ""

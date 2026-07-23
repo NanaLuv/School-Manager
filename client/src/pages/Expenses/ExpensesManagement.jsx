@@ -52,12 +52,23 @@ const ExpensesManagement = () => {
     end_date: new Date().toISOString().split("T")[0],
     status: "",
     paid_to: "",
+    pv_number: "",
   });
   const [statistics, setStatistics] = useState({});
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportOptions, setExportOptions] = useState({
     format: "excel",
   });
+
+  // Category Management State
+  const [categories, setCategories] = useState([]);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategory, setNewCategory] = useState({
+    category_name: "",
+    description: "",
+  });
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
   // Status badge colors
   const statusColors = {
@@ -104,12 +115,107 @@ const ExpensesManagement = () => {
     fetchStatistics();
   }, [filters]);
 
+  const fetchCategories = async () => {
+    try {
+      setLoadingCategories(true);
+      const response = await api.get("/fee-categories");
+      setCategories(response.data || []);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      // Use common categories as fallback
+      setCategories(commonCategories.map((cat) => ({ category_name: cat })));
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategory.category_name.trim()) {
+      alert("Please enter a category name");
+      return;
+    }
+
+    try {
+      const response = await api.post("/createfeecategory", {
+        category_name: newCategory.category_name,
+        description: newCategory.description,
+      });
+
+      // Refresh categories
+      await fetchCategories();
+
+      // Reset form and close modal
+      setNewCategory({ category_name: "", description: "" });
+      setShowCategoryModal(false);
+      alert("Category added successfully!");
+    } catch (error) {
+      console.error("Error adding category:", error);
+      alert(error.response?.data?.error || "Failed to add category");
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    if (!window.confirm("Are you sure you want to delete this category?"))
+      return;
+
+    try {
+      await api.delete(`/deletefeecategory/${categoryId}`);
+      await fetchCategories();
+      alert("Category deleted successfully!");
+    } catch (error) {
+      console.error("Error deleting category:", error);
+      alert(error.response?.data?.error || "Failed to delete category");
+    }
+  };
+
+  const handleEditCategory = (category) => {
+    setEditingCategory(category);
+    setNewCategory({
+      category_name: category.category_name,
+      description: category.description || "",
+    });
+    setShowCategoryModal(true);
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!newCategory.category_name.trim()) {
+      alert("Please enter a category name");
+      return;
+    }
+
+    try {
+      await api.put(`/updatefeecategory/${editingCategory.id}`, {
+        category_name: newCategory.category_name,
+        description: newCategory.description,
+      });
+
+      await fetchCategories();
+      setNewCategory({ category_name: "", description: "" });
+      setEditingCategory(null);
+      setShowCategoryModal(false);
+      alert("Category updated successfully!");
+    } catch (error) {
+      console.error("Error updating category:", error);
+      alert(error.response?.data?.error || "Failed to update category");
+    }
+  };
+
   const fetchPVHeaders = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/pv-headers", {
-        params: { ...filters, limit: 50 },
-      });
+      // Only include filters that have values
+      const params = {};
+
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+      if (filters.status) params.status = filters.status;
+      if (filters.paid_to) params.paid_to = filters.paid_to;
+      if (filters.pv_number) params.pv_number = filters.pv_number; // Make sure this is sent
+
+      // Add limit
+      params.limit = 50;
+
+      const response = await api.get("/pv-headers", { params });
       setPvHeaders(response.data.pv_headers || []);
     } catch (error) {
       console.error("Error loading PVs:", error);
@@ -343,6 +449,27 @@ const ExpensesManagement = () => {
     setFilters((prev) => ({ ...prev, [name]: value }));
   };
 
+  // function to download single expense
+  const handleDownloadSinglePV = async (pvId, pvNumber) => {
+    try {
+      const response = await api.get(`/pv-headers/${pvId}/export-pdf`, {
+        responseType: "blob",
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `PV-${pvNumber}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading PV:", error);
+      alert("Failed to download PV");
+    }
+  };
+
   const handleExport = async () => {
     try {
       const params = new URLSearchParams({
@@ -375,6 +502,105 @@ const ExpensesManagement = () => {
     }
   };
 
+  const clearFilters = () => {
+    setFilters({
+      start_date: new Date().toISOString().split("T")[0],
+      end_date: new Date().toISOString().split("T")[0],
+      status: "",
+      paid_to: "",
+      pv_number: "",
+    });
+    fetchPVHeaders();
+  };
+
+  // Category Modal Component
+  const CategoryModal = () => {
+    return (
+      <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-gray-900">
+                {editingCategory ? "Edit Category" : "Add New Category"}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCategoryModal(false);
+                  setEditingCategory(null);
+                  setNewCategory({ category_name: "", description: "" });
+                }}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category Name *
+                </label>
+                <input
+                  type="text"
+                  value={newCategory.category_name}
+                  onChange={(e) =>
+                    setNewCategory({
+                      ...newCategory,
+                      category_name: e.target.value,
+                    })
+                  }
+                  placeholder="e.g., Office Supplies"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={newCategory.description}
+                  onChange={(e) =>
+                    setNewCategory({
+                      ...newCategory,
+                      description: e.target.value,
+                    })
+                  }
+                  placeholder="Brief description of this category..."
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCategoryModal(false);
+                    setEditingCategory(null);
+                    setNewCategory({ category_name: "", description: "" });
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={
+                    editingCategory ? handleUpdateCategory : handleAddCategory
+                  }
+                  className="px-4 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 transition-colors"
+                >
+                  {editingCategory ? "Update Category" : "Add Category"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -387,6 +613,16 @@ const ExpensesManagement = () => {
           Create, manage, and track payment vouchers
         </p>
       </div>
+
+      {/* <div className="flex gap-2">
+        <button
+          onClick={() => setShowCategoryModal(true)}
+          className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors"
+        >
+          <TagIcon className="w-5 h-5" />
+          <span>Add Categories</span>
+        </button>
+      </div> */}
 
       {/* Quick Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
@@ -461,6 +697,7 @@ const ExpensesManagement = () => {
       {view === "list" && (
         <div className="bg-white rounded-lg shadow border">
           {/* Filter Bar */}
+          {/* Filter Bar */}
           <div className="p-4 border-b">
             <div className="flex flex-wrap gap-3 items-end">
               <div>
@@ -481,6 +718,24 @@ const ExpensesManagement = () => {
                   value={filters.end_date}
                   onChange={handleFilterChange}
                   className="border p-1 rounded text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">
+                  PV Number
+                </label>
+                <input
+                  type="text"
+                  name="pv_number"
+                  value={filters.pv_number}
+                  onChange={(e) => {
+                    setFilters((prev) => ({
+                      ...prev,
+                      pv_number: e.target.value,
+                    }));
+                  }}
+                  placeholder="e.g., PV-001"
+                  className="border p-1 rounded text-sm w-36"
                 />
               </div>
               <div>
@@ -506,15 +761,34 @@ const ExpensesManagement = () => {
                   value={filters.paid_to}
                   onChange={handleFilterChange}
                   placeholder="Search payee..."
-                  className="border p-1 rounded text-sm"
+                  className="border p-1 rounded text-sm w-32"
                 />
               </div>
-              <div>
+              <div className="flex gap-2">
                 <button
-                  onClick={fetchPVHeaders}
-                  className="bg-blue-500 text-white px-4 py-1.5 rounded text-sm"
+                  onClick={() => {
+                    // Clear any previous state and fetch with current filters
+                    fetchPVHeaders();
+                  }}
+                  className="bg-blue-500 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-600"
                 >
                   Apply Filters
+                </button>
+                <button
+                  onClick={() => {
+                    setFilters({
+                      start_date: new Date().toISOString().split("T")[0],
+                      end_date: new Date().toISOString().split("T")[0],
+                      status: "",
+                      paid_to: "",
+                      pv_number: "",
+                    });
+                    // Fetch after clearing
+                    setTimeout(() => fetchPVHeaders(), 100);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-sm px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50"
+                >
+                  Clear
                 </button>
               </div>
               <div className="ml-auto flex gap-2">
@@ -531,14 +805,14 @@ const ExpensesManagement = () => {
                     });
                     setView("form");
                   }}
-                  className="bg-green-500 text-white px-4 py-1.5 rounded text-sm flex items-center"
+                  className="bg-green-500 text-white px-4 py-1.5 rounded text-sm flex items-center hover:bg-green-600"
                 >
                   <PlusIcon className="w-4 h-4 mr-1" />
                   New PV
                 </button>
                 <button
                   onClick={() => setShowExportModal(true)}
-                  className="bg-purple-500 text-white px-4 py-1.5 rounded text-sm flex items-center"
+                  className="bg-purple-500 text-white px-4 py-1.5 rounded text-sm flex items-center hover:bg-purple-600"
                 >
                   <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
                   Export
@@ -659,6 +933,15 @@ const ExpensesManagement = () => {
                             title="View Details"
                           >
                             <DocumentTextIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleDownloadSinglePV(pv.id, pv.pv_number)
+                            }
+                            className="text-indigo-500 hover:text-indigo-700"
+                            title="Download PDF"
+                          >
+                            <ArrowDownTrayIcon className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -1014,6 +1297,15 @@ const ExpensesManagement = () => {
               </div>
               <div className="flex gap-2">
                 <button
+                  onClick={() =>
+                    handleDownloadSinglePV(selectedPV.id, selectedPV.pv_number)
+                  }
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                >
+                  <ArrowDownTrayIcon className="w-4 h-4 inline mr-1" />
+                  Download PDF
+                </button>
+                <button
                   onClick={() => setView("list")}
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg"
                 >
@@ -1245,6 +1537,9 @@ const ExpensesManagement = () => {
           </div>
         </div>
       )}
+
+      {/* Category Modal */}
+      {showCategoryModal && <CategoryModal />}
     </div>
   );
 };

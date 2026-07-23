@@ -8,6 +8,7 @@ import {
   ChartBarIcon,
   Cog6ToothIcon,
   EnvelopeIcon,
+  BookOpenIcon
 } from "@heroicons/react/24/outline";
 
 const Profile = () => {
@@ -21,9 +22,13 @@ const Profile = () => {
     );
   }
 
+  
   // Get user role
   const userRole = (user.role || user.role_name || "").toLowerCase();
+  
+  console.log("User data in Profile component:", user);
 
+  
   // Get welcome message based on role
   const getWelcomeMessage = () => {
     const name = user?.first_name || user?.username || "Valued User";
@@ -40,6 +45,7 @@ const Profile = () => {
       teacher: `${greeting}, ${name}! Welcome to your Teacher Portal. Manage your classes, students, and academic activities.`,
       student: `${greeting}, ${name}! Welcome to your Student Portal. Access your academic records, fees, and personal information.`,
       accountant: `${greeting}, ${name}! Welcome to the Finance Dashboard. Manage financial transactions, fees, and reports.`,
+      academics: `${greeting}, ${name}! Welcome to the Academic Dashboard. Manage academic programs, courses, and student records.`,
       parent: `${greeting}, ${name}! Welcome to the Parent Portal. Monitor your child's progress and school activities.`,
     };
 
@@ -156,6 +162,32 @@ const Profile = () => {
           color: "bg-red-100 text-red-600",
         },
       ],
+      academics: [
+        {
+          label: "Take Attendance",
+          icon: UserCircleIcon,
+          path: "/academics/attendance/take",
+          color: "bg-blue-100 text-blue-600",
+        },
+        {
+          label: "Enter Grades",
+          icon: AcademicCapIcon,
+          path: "/academics/grades",
+          color: "bg-green-100 text-green-600",
+        },
+        {
+          label: "My Classes",
+          icon: CalendarDaysIcon,
+          path: "/classes/list",
+          color: "bg-purple-100 text-purple-600",
+        },
+        {
+          label: "Generate Reports",
+          icon: ChartBarIcon,
+          path: "/academics/report-cards/generate",
+          color: "bg-amber-100 text-amber-600",
+        },
+      ],
     };
 
     return (
@@ -198,6 +230,11 @@ const Profile = () => {
         icon: BanknotesIcon,
         color: "bg-purple-100 text-purple-800",
         label: "Accountant",
+      },
+      academics: {
+        icon: BookOpenIcon,
+        color: "bg-amber-100 text-amber-800",
+        label: "Academics",
       },
     };
 
@@ -379,6 +416,8 @@ const Profile = () => {
                       "Student access to academic records"}
                     {userRole === "accountant" &&
                       "Financial management and reporting"}
+                    {userRole === "academics" &&
+                      "Academic management and oversight"}
                   </p>
                 </div>
               </div>
@@ -446,6 +485,36 @@ const Profile = () => {
                       </li>
                     </>
                   )}
+
+                  {userRole === "academics" && (
+                    <>
+                      <li className="flex items-center">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                        Take Attendance
+                      </li>
+                      <li className="flex items-center">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                        Enter Grades
+                      </li>
+                      <li className="flex items-center">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                        Approve Scores
+                      </li>
+                      <li className="flex items-center">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                        Set Grade Point
+                      </li>
+                      <li className="flex items-center">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                        View My Classes
+                      </li>
+                      <li className="flex items-center">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                        Generate Reports
+                      </li>
+                    </>
+                  )}
+
                 </ul>
               </div>
             </div>

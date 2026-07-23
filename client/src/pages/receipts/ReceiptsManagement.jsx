@@ -9,6 +9,7 @@ import {
   XMarkIcon,
   CreditCardIcon,
   AcademicCapIcon,
+  CalculatorIcon,
 } from "@heroicons/react/24/outline";
 import api from "../../components/axiosconfig/axiosConfig";
 
@@ -19,6 +20,8 @@ const ReceiptsManagement = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [allocationDetails, setAllocationDetails] = useState({});
   const [loadingAllocations, setLoadingAllocations] = useState(false);
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [totalReceipts, setTotalReceipts] = useState(0);
 
   const [filters, setFilters] = useState({
     receipt_number: "",
@@ -38,8 +41,16 @@ const ReceiptsManagement = () => {
     try {
       const params = new URLSearchParams({ ...filters, page });
       const response = await api.get(`/getallreceipts?${params}`);
-      setReceipts(response.data.receipts);
+      const receiptsData = response.data.receipts;
+      setReceipts(receiptsData);
       setPagination(response.data.pagination);
+
+      // Calculate total amount from filtered receipts
+      const total = receiptsData.reduce((sum, receipt) => {
+        return sum + parseFloat(receipt.amount_paid || 0);
+      }, 0);
+      setTotalAmount(total);
+      setTotalReceipts(receiptsData.length);
     } catch (error) {
       console.error("Error fetching receipts:", error);
       alert("Error loading receipts");
@@ -67,7 +78,6 @@ const ReceiptsManagement = () => {
     setSelectedReceipt(receipt);
     setShowPreview(true);
 
-    // Fetch allocation details if not already loaded
     if (!allocationDetails[receipt.payment_id]) {
       await fetchAllocationDetails(receipt.payment_id);
     }
@@ -86,6 +96,7 @@ const ReceiptsManagement = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error downloading receipt:", error);
       alert("Error downloading receipt");
@@ -98,10 +109,11 @@ const ReceiptsManagement = () => {
   };
 
   const formatCurrency = (amount) => {
-    return `Ghc ${parseFloat(amount).toFixed(2)}`;
+    return `Ghc ${parseFloat(amount || 0).toFixed(2)}`;
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
@@ -118,6 +130,20 @@ const ReceiptsManagement = () => {
       Card: "💳",
     };
     return icons[method] || "💰";
+  };
+
+  const handleClearFilters = () => {
+    setFilters({
+      receipt_number: "",
+      student_name: "",
+      admission_number: "",
+      start_date: "",
+      end_date: "",
+      payment_method: "",
+      academic_year_id: "",
+      term_id: "",
+    });
+    // Fetch will trigger automatically via useEffect
   };
 
   useEffect(() => {
@@ -168,7 +194,7 @@ const ReceiptsManagement = () => {
             </div>
           </div>
 
-          {/* Receipt Content */}
+          {/* Rest of your modal content remains the same */}
           <div className="p-6">
             {/* Student Information */}
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -288,44 +314,9 @@ const ReceiptsManagement = () => {
 
               {currentAllocations.length > 0 ? (
                 <div className="space-y-3">
-                  {/* {currentAllocations.map((allocation, index) => (
-                    <div
-                      key={allocation.id}
-                      className="flex justify-between items-center p-3 bg-white rounded-lg border"
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">
-                          {allocation.category_name || allocation.bill_description}
-                        </div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          {allocation.bill_description && 
-                           allocation.bill_description !== allocation.category_name && 
-                           allocation.bill_description}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Due: {formatDate(allocation.due_date)}
-                          {allocation.is_compulsory && (
-                            <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">
-                              Compulsory
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-semibold text-blue-600">
-                          {formatCurrency(allocation.amount_allocated)}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Bill: {formatCurrency(allocation.bill_amount)}
-                        </div>
-                      </div>
-                    </div>
-                  ))} */}
-
-                  {currentAllocations.map((allocation, index) => {
-                    // Use custom description if available, otherwise fall back to existing logic
+                  {currentAllocations.map((allocation) => {
                     const allocationDescription =
-                      allocation.description || // Custom description from payment
+                      allocation.description ||
                       allocation.bill_description ||
                       allocation.category_name ||
                       `Bill #${allocation.bill_id}`;
@@ -338,18 +329,15 @@ const ReceiptsManagement = () => {
                         <div className="flex-1">
                           <div className="font-medium text-gray-900">
                             {allocation.category_name}
-                            {/* Show indicator if custom description was used */}
                             {allocation.description && (
                               <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
                                 Custom Note
                               </span>
                             )}
                           </div>
-
                           <div className="text-sm text-gray-600 mt-1">
                             {allocationDescription}
                           </div>
-
                           <div className="text-xs text-gray-500 mt-1">
                             Due: {formatDate(allocation.due_date)}
                             {allocation.is_compulsory && (
@@ -371,7 +359,6 @@ const ReceiptsManagement = () => {
                     );
                   })}
 
-                  {/* Allocation Summary */}
                   <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200 mt-4">
                     <div className="font-semibold text-blue-900">
                       Total Allocated:
@@ -381,7 +368,6 @@ const ReceiptsManagement = () => {
                     </div>
                   </div>
 
-                  {/* Allocation vs Payment Comparison */}
                   {Math.abs(
                     totalAllocated - parseFloat(selectedReceipt.amount_paid),
                   ) > 0.01 && (
@@ -412,7 +398,6 @@ const ReceiptsManagement = () => {
               )}
             </div>
 
-            {/* Notes */}
             {selectedReceipt.notes && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="text-lg font-semibold mb-2">Additional Notes</h3>
@@ -423,14 +408,13 @@ const ReceiptsManagement = () => {
             )}
           </div>
 
-          {/* Footer */}
           <div className="border-t p-4 bg-gray-50 rounded-b-lg">
             <div className="flex justify-between items-center text-sm text-gray-500">
               <span>
                 Generated on {new Date().toLocaleDateString()} at{" "}
                 {new Date().toLocaleTimeString()}
               </span>
-              <span>School Manager System</span>
+              <span>Trackers</span>
             </div>
           </div>
         </div>
@@ -564,18 +548,7 @@ const ReceiptsManagement = () => {
           </div>
           <div>
             <button
-              onClick={() =>
-                setFilters({
-                  receipt_number: "",
-                  student_name: "",
-                  admission_number: "",
-                  start_date: "",
-                  end_date: "",
-                  payment_method: "",
-                  academic_year_id: "",
-                  term_id: "",
-                })
-              }
+              onClick={handleClearFilters}
               className="w-full bg-gray-500 text-white p-2 rounded hover:bg-gray-600 mt-6"
             >
               Clear Filters
@@ -584,12 +557,58 @@ const ReceiptsManagement = () => {
         </div>
       </div>
 
+      {/* Summary Cards - Total Amount Display */}
+      {receipts.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg p-5 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm opacity-90">Total Receipts</p>
+                <p className="text-3xl font-bold">{totalReceipts}</p>
+              </div>
+              <DocumentTextIcon className="w-12 h-12 opacity-50" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg p-5 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm opacity-90">Total Amount Collected</p>
+                <p className="text-3xl font-bold">
+                  {formatCurrency(totalAmount)}
+                </p>
+              </div>
+              <BanknotesIcon className="w-12 h-12 opacity-50" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg shadow-lg p-5 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm opacity-90">Average Receipt Amount</p>
+                <p className="text-3xl font-bold">
+                  {formatCurrency(
+                    totalReceipts > 0 ? totalAmount / totalReceipts : 0,
+                  )}
+                </p>
+              </div>
+              <CalculatorIcon className="w-12 h-12 opacity-50" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Receipts List */}
       <div className="bg-white rounded-lg shadow border">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex justify-between items-center">
           <h2 className="text-lg font-semibold">
             All Receipts ({pagination.total || 0})
           </h2>
+          {receipts.length > 0 && (
+            <div className="text-sm text-gray-600">
+              Showing {receipts.length} receipt(s)
+            </div>
+          )}
         </div>
 
         {loading ? (

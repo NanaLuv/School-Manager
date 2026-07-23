@@ -118,9 +118,11 @@ const StudentBillSelection = () => {
         api.get(`/getstudentoverpayments/${studentId}`),
       ]);
 
-      setStudentArrears(arrearsRes.data);
+      setStudentArrears(arrearsRes.data?.arrears || []);
       setStudentOverpayments(
-        overpaymentsRes.data.filter((op) => op.status === "Active"),
+        overpaymentsRes.data?.overpayments?.filter(
+          (op) => op.status === "Active",
+        ) || [],
       );
     } catch (error) {
       console.error("Error fetching student balances:", error);
@@ -290,7 +292,7 @@ const StudentBillSelection = () => {
         academic_year_id: studentInfo.academic_year_id,
         term_id: studentInfo.term_id,
         new_bill_ids: newBillIds,
-        edited_amounts: editedAmountsPayload, // Make sure this is sent
+        edited_amounts: editedAmountsPayload,
         created_by: 1,
       });
 
@@ -469,22 +471,6 @@ const StudentBillSelection = () => {
       ? editedAmounts[bill.id]
       : parseFloat(bill.amount);
   };
-
-  // // Fetch overpayments
-  // const fetchStudentOverpayments = async () => {
-  //   try {
-  //     const response = await api.get(
-  //       `/getstudentoverpayments/${studentId}?academic_year_id=${studentInfo?.academic_year_id}&term_id=${studentInfo?.term_id}`
-  //     );
-  //     setStudentOverpayments(
-  //       response.data.filter((op) => op.status === "Active")
-  //     );
-  //   } catch (error) {
-  //     console.error("Error fetching student overpayments:", error);
-  //   }
-  // };
-
-  // Update calculateTotals to handle overpayments
 
   const calculateTotals = () => {
     const selectedBillObjects = studentBills

@@ -212,8 +212,7 @@ const TakeAttendance = () => {
 
     setSaving(true);
     try {
-      const recorded_by = user.id || 1;
-
+      const recorded_by = user?.user.id;
       // Get current academic year
       let academic_year_id;
       try {
@@ -266,8 +265,7 @@ const TakeAttendance = () => {
         date: attendanceDate,
         recorded_by,
       });
-
-      alert("Attendance saved successfully!");
+      alert(response.data.message || "Attendance saved successfully");
       fetchPreviousAttendance(); // Refresh previous attendance
     } catch (error) {
       console.error("Error saving attendance:", error);
