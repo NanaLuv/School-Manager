@@ -14,7 +14,6 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import axios from "axios";
 import { useAcademicData } from "../../hooks/useAcademicContext";
 import api from "../../components/axiosconfig/axiosConfig";
 

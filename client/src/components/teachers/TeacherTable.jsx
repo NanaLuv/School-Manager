@@ -75,13 +75,13 @@ const TeacherTable = ({ teachers, onEdit, onDelete, onView, emptyMessage }) => {
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <div className="flex space-x-2">
-                  <button
+                  {/* <button
                     onClick={() => onView?.(teacher)}
                     className="text-blue-600 hover:text-blue-900"
                     title="View Teacher"
                   >
                     <EyeIcon className="w-5 h-5" />
-                  </button>
+                  </button> */}
                   <button
                     onClick={() => onEdit(teacher)}
                     className="text-emerald-600 hover:text-emerald-900"

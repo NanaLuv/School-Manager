@@ -9105,42 +9105,285 @@ const deleteStudentOverpayment = async (req, res) => {
   }
 };
 
-// DELETE /api/student-overpayments - Delete ALL overpayments (use with caution!)
-// const deleteAllOverpayments = async (req, res) => {
-//   const connection = await pool.getConnection();
-
+// FIXED generateClassBillsPDF function - Shows optional fees for non-finalized bills
+// const generateClassBillsPDF = async (req, res) => {
 //   try {
-//     await connection.beginTransaction();
+//     const { class_id, academic_year_id, term_id } = req.params;
 
-//     // Get count before deletion for reporting
-//     const [countResult] = await connection.query(
-//       "SELECT COUNT(*) as total FROM student_overpayments"
+//     // Get all students in the class
+//     const [students] = await pool.query(
+//       `
+//       SELECT 
+//         s.id as student_id,
+//         s.first_name,
+//         s.last_name, 
+//         s.admission_number,
+//         s.date_of_birth,
+//         s.gender,
+//         s.parent_name,
+//         s.parent_contact,
+//         c.class_name,
+//         ay.year_label as academic_year
+//       FROM students s
+//       INNER JOIN class_assignments ca ON s.id = ca.student_id
+//       LEFT JOIN classes c ON ca.class_id = c.id
+//       INNER JOIN academic_years ay ON ca.academic_year_id = ay.id
+//       WHERE ca.class_id = ? AND ca.academic_year_id = ? 
+//       AND (s.is_active IS NULL OR s.is_active = TRUE)
+//       ORDER BY s.first_name, s.last_name
+//       `,
+//       [class_id, academic_year_id],
 //     );
-//     const totalCount = countResult[0].total;
 
-//     // Delete all overpayments
-//     const [result] = await connection.query("DELETE FROM student_overpayments");
+//     if (students.length === 0) {
+//       return res.status(404).json({ error: "No students found in this class" });
+//     }
 
-//     await connection.commit();
+//     // Get class info
+//     const [classInfo] = await pool.query(
+//       "SELECT class_name FROM classes WHERE id = ?",
+//       [class_id],
+//     );
 
-//     res.json({
-//       success: true,
-//       message: `Successfully deleted all student overpayments`,
-//       deletedCount: totalCount,
-//     });
+//     const className = classInfo[0]?.class_name || "class";
+
+//     // Get term info
+//     const [termInfo] = await pool.query(
+//       "SELECT term_name FROM terms WHERE id = ?",
+//       [term_id],
+//     );
+
+//     const termName = termInfo[0]?.term_name || `Term ${term_id}`;
+
+//     // Get bills data for each student - FIXED VERSION
+//     const studentsWithBills = await Promise.all(
+//       students.map(async (student) => {
+//         // FIRST: Check if student has finalized bill
+//         const [termBill] = await pool.query(
+//           `
+//           SELECT * FROM student_term_bills 
+//           WHERE student_id = ? AND academic_year_id = ? AND term_id = ? AND is_finalized = TRUE
+//           `,
+//           [student.student_id, academic_year_id, term_id],
+//         );
+
+//         const hasFinalizedBill = termBill.length > 0;
+
+//         if (hasFinalizedBill) {
+//           // USE FINALIZED BILL DATA - this is our single source of truth
+//           const finalizedBill = termBill[0];
+
+//           // Parse selected_bills to get the actual selected bill IDs and edited amounts
+//           let selectedBillsData = {};
+//           try {
+//             selectedBillsData =
+//               typeof finalizedBill.selected_bills === "string"
+//                 ? JSON.parse(finalizedBill.selected_bills)
+//                 : finalizedBill.selected_bills;
+//           } catch (error) {
+//             console.error("Error parsing selected_bills:", error);
+//             selectedBillsData = {};
+//           }
+
+//           // Get the actual bill details for selected bills only
+//           const selectedBillIds = selectedBillsData.bill_ids || [];
+//           const editedAmounts = selectedBillsData.edited_amounts || {};
+
+//           let bills = [];
+//           let compulsoryBills = [];
+//           let optionalBills = [];
+
+//           if (selectedBillIds.length > 0) {
+//             [bills] = await pool.query(
+//               `
+//                 SELECT 
+//                   b.*,
+//                   bt.description,
+//                   bt.is_compulsory,
+//                   bt.term_id,
+//                   fc.category_name
+//                 FROM bills b
+//                 LEFT JOIN bill_templates bt ON b.bill_template_id = bt.id
+//                 LEFT JOIN fee_categories fc ON bt.fee_category_id = fc.id
+//                 WHERE b.id IN (?)
+//                 ORDER BY bt.is_compulsory DESC, fc.category_name
+//                 `,
+//               [selectedBillIds],
+//             );
+
+//             // PROPERLY APPLY EDITED AMOUNTS
+//             bills = bills.map((bill) => {
+//               const originalAmount = parseFloat(bill.amount);
+//               const editedAmount = editedAmounts[bill.id];
+
+//               // Use edited amount if it exists, otherwise use original amount
+//               const finalAmount =
+//                 editedAmount !== undefined
+//                   ? parseFloat(editedAmount)
+//                   : originalAmount;
+
+//               return {
+//                 ...bill,
+//                 amount: finalAmount, // Override the amount with edited amount
+//                 finalAmount: finalAmount,
+//                 originalAmount: originalAmount,
+//                 isSelected: true, // All bills in finalized bill are selected by definition
+//                 hasCustomAmount:
+//                   editedAmount !== undefined && editedAmount !== originalAmount,
+//               };
+//             });
+//           }
+
+//           // SEPARATE BILLS BY TYPE
+//           compulsoryBills = bills.filter((bill) => bill.is_compulsory);
+//           optionalBills = bills.filter((bill) => !bill.is_compulsory);
+
+//           // Get arrears and overpayments (use current data, not stored)
+//           const [arrears] = await pool.query(
+//             `SELECT * FROM student_arrears 
+//              WHERE student_id = ? AND (academic_year_id = ? OR academic_year_id IS NULL)`,
+//             [student.student_id, academic_year_id],
+//           );
+
+//           const [overpayments] = await pool.query(
+//             `SELECT * FROM student_overpayments 
+//              WHERE student_id = ? AND status = 'Active' AND (academic_year_id = ? OR academic_year_id IS NULL)`,
+//             [student.student_id, academic_year_id],
+//           );
+
+//           // Use the STORED totals from finalized bill - don't recalculate!
+//           const totals = {
+//             compulsory: parseFloat(finalizedBill.compulsory_amount) || 0,
+//             optional: parseFloat(finalizedBill.optional_amount) || 0,
+//             currentTermTotal: parseFloat(finalizedBill.total_amount) || 0,
+//             arrearsTotal: selectedBillsData.arrears_included || 0,
+//             overpaymentsTotal: selectedBillsData.overpayments_included || 0,
+//             total: parseFloat(finalizedBill.total_amount) || 0, // Use the stored total
+//             isFinalized: true,
+//           };
+
+//           return {
+//             student,
+//             bills: bills, // All selected bills
+//             compulsoryBills: compulsoryBills, // Only compulsory bills
+//             optionalBills: optionalBills, // Only optional bills
+//             arrears,
+//             overpayments,
+//             termBill: finalizedBill,
+//             totals,
+//             isFinalized: true,
+//           };
+//         } else {
+//           // NOT FINALIZED: Show ALL bills (both compulsory and optional) but only calculate compulsory in total
+//           const [bills] = await pool.query(
+//             `
+//             SELECT 
+//               b.*,
+//               bt.description,
+//               bt.is_compulsory,
+//               bt.term_id,
+//               fc.category_name
+//             FROM bills b
+//             LEFT JOIN bill_templates bt ON b.bill_template_id = bt.id
+//             LEFT JOIN fee_categories fc ON bt.fee_category_id = fc.id
+//             WHERE b.student_id = ? AND bt.academic_year_id = ? AND bt.term_id = ?
+//             ORDER BY bt.is_compulsory DESC, fc.category_name
+//             `,
+//             [student.student_id, academic_year_id, term_id],
+//           );
+
+//           // Get arrears and overpayments
+//           const [arrears] = await pool.query(
+//             `SELECT * FROM student_arrears 
+//              WHERE student_id = ? AND (academic_year_id = ? OR academic_year_id IS NULL)`,
+//             [student.student_id, academic_year_id],
+//           );
+
+//           const [overpayments] = await pool.query(
+//             `SELECT * FROM student_overpayments 
+//              WHERE student_id = ? AND status = 'Active' AND (academic_year_id = ? OR academic_year_id IS NULL)`,
+//             [student.student_id, academic_year_id],
+//           );
+
+//           // Calculate totals from bills table
+//           // For non-finalized: Only compulsory bills count toward total, but show optional bills
+//           const compulsoryTotal = bills
+//             .filter((bill) => bill.is_compulsory)
+//             .reduce((sum, bill) => sum + parseFloat(bill.amount || 0), 0);
+
+//           const optionalTotal = bills
+//             .filter((bill) => !bill.is_compulsory)
+//             .reduce((sum, bill) => sum + parseFloat(bill.amount || 0), 0);
+
+//           const arrearsTotal = arrears.reduce(
+//             (sum, arrear) => sum + parseFloat(arrear.amount || 0),
+//             0,
+//           );
+//           const overpaymentsTotal = overpayments.reduce(
+//             (sum, op) => sum + parseFloat(op.amount || 0),
+//             0,
+//           );
+
+//           const currentTermTotal = compulsoryTotal; // Only compulsory for non-finalized
+//           const totalAmount = Math.max(
+//             currentTermTotal + arrearsTotal - overpaymentsTotal,
+//             0,
+//           );
+
+//           const totals = {
+//             compulsory: compulsoryTotal,
+//             optional: optionalTotal,
+//             currentTermTotal: currentTermTotal,
+//             arrearsTotal: arrearsTotal,
+//             overpaymentsTotal: overpaymentsTotal,
+//             total: totalAmount,
+//             isFinalized: false,
+//           };
+
+//           return {
+//             student,
+//             bills: bills.map((bill) => ({
+//               ...bill,
+//               finalAmount: parseFloat(bill.amount),
+//               originalAmount: parseFloat(bill.amount),
+//               isSelected: bill.is_compulsory, // Only compulsory are selected by default for non-finalized
+//             })),
+//             compulsoryBills: bills.filter((bill) => bill.is_compulsory),
+//             optionalBills: bills.filter((bill) => !bill.is_compulsory),
+//             arrears,
+//             overpayments,
+//             termBill: null,
+//             totals,
+//             isFinalized: false,
+//           };
+//         }
+//       }),
+//     );
+
+//     // Generate the combined PDF
+//     const pdfBuffer = await generateCombinedBillsPDFJsPDF(
+//       studentsWithBills,
+//       className,
+//       academic_year_id,
+//       termName,
+//     );
+
+//     // Send the combined PDF
+//     res.setHeader("Content-Type", "application/pdf");
+//     res.setHeader(
+//       "Content-Disposition",
+//       `attachment; filename="${className}-all-bills-${academic_year_id}-${term_id}.pdf"`,
+//     );
+
+//     res.send(pdfBuffer);
 //   } catch (error) {
-//     await connection.rollback();
-//     console.error("Error deleting all overpayments:", error);
-//     res.status(500).json({
-//       error: "Failed to delete overpayments",
-//       details: error.message,
-//     });
-//   } finally {
-//     connection.release();
+//     console.error("Error generating class bills PDF:", error);
+//     res
+//       .status(500)
+//       .json({ error: "Failed to generate class bills PDF: " + error.message });
 //   }
 // };
 
-// FIXED generateClassBillsPDF function - Shows optional fees for non-finalized bills
 const generateClassBillsPDF = async (req, res) => {
   try {
     const { class_id, academic_year_id, term_id } = req.params;
@@ -9189,6 +9432,13 @@ const generateClassBillsPDF = async (req, res) => {
     );
 
     const termName = termInfo[0]?.term_name || `Term ${term_id}`;
+
+    // Get academic year label
+    const [yearInfo] = await pool.query(
+      "SELECT year_label FROM academic_years WHERE id = ?",
+      [academic_year_id],
+    );
+    const academicYearLabel = yearInfo[0]?.year_label || academic_year_id;
 
     // Get bills data for each student - FIXED VERSION
     const studentsWithBills = await Promise.all(
@@ -9395,11 +9645,11 @@ const generateClassBillsPDF = async (req, res) => {
       }),
     );
 
-    // Generate the combined PDF
+    // Generate the combined PDF - PASS THE ACADEMIC YEAR LABEL
     const pdfBuffer = await generateCombinedBillsPDFJsPDF(
       studentsWithBills,
       className,
-      academic_year_id,
+      academicYearLabel, // ← Changed from academic_year_id to academicYearLabel
       termName,
     );
 
@@ -9407,7 +9657,7 @@ const generateClassBillsPDF = async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${className}-all-bills-${academic_year_id}-${term_id}.pdf"`,
+      `attachment; filename="${className}-all-bills-${academicYearLabel}-${termName}.pdf"`,
     );
 
     res.send(pdfBuffer);
@@ -9420,10 +9670,440 @@ const generateClassBillsPDF = async (req, res) => {
 };
 
 // Updated generateCombinedBillsPDFJsPDF function
+// const generateCombinedBillsPDFJsPDF = async (
+//   studentsWithBills,
+//   className,
+//   academicYearId,
+//   termName,
+// ) => {
+//   const { jsPDF } = require("jspdf");
+
+//   const pdf = new jsPDF("p", "mm", "a4");
+//   const pageWidth = pdf.internal.pageSize.getWidth();
+//   const pageHeight = pdf.internal.pageSize.getHeight();
+
+//   // Colors
+//   const primaryColor = [41, 128, 185];
+//   const compulsoryColor = [220, 53, 69];
+//   const optionalColor = [13, 110, 253];
+//   const arrearsColor = [253, 126, 20];
+//   const creditColor = [25, 135, 84];
+//   const darkColor = [33, 37, 41];
+
+//   // Get school settings once
+//   const schoolSettings = await getSchoolSettingsForPDF();
+
+//   // Helper function to safely convert values to strings
+//   const safeText = (value) => {
+//     if (value === null || value === undefined) return "";
+//     return String(value);
+//   };
+
+//   // Helper function to safely format numbers
+//   const safeNumber = (value) => {
+//     if (value === null || value === undefined) return "0.00";
+//     const num = parseFloat(value);
+//     return isNaN(num) ? "0.00" : num.toFixed(2);
+//   };
+
+//   // Process each student
+//   for (
+//     let studentIndex = 0;
+//     studentIndex < studentsWithBills.length;
+//     studentIndex++
+//   ) {
+//     const studentData = studentsWithBills[studentIndex];
+
+//     if (studentIndex > 0) {
+//       pdf.addPage();
+//     }
+
+//     const { student, bills, arrears, overpayments, totals } = studentData;
+//     let yPosition = 30;
+
+//     // ==================== HEADER WITH SCHOOL LOGO ====================
+//     // Add header for each page
+//     await addPageHeaderWithLogo(pdf, pageWidth, schoolSettings);
+
+//     // Add header line
+//     pdf.setDrawColor(...primaryColor);
+//     pdf.setLineWidth(0.5);
+//     const headerBottomY = 45; // Adjust based on your header height
+//     pdf.line(15, headerBottomY, pageWidth - 15, headerBottomY);
+
+//     // Reset y position after header
+//     yPosition = headerBottomY + 10;
+
+//     // Bill title
+//     pdf.setFontSize(18);
+//     pdf.setFont("helvetica", "bold");
+//     pdf.setTextColor(...primaryColor);
+//     pdf.text("STUDENT FEE BILL", pageWidth / 2, yPosition, { align: "center" });
+//     yPosition += 10;
+
+//     // ==================== STUDENT INFORMATION ====================
+//     pdf.setFontSize(10);
+//     pdf.setFont("helvetica", "normal");
+//     pdf.setTextColor(0, 0, 0);
+
+//     // Student details in two columns
+//     const leftColumnX = 20;
+//     const rightColumnX = pageWidth / 2 + 10;
+
+//     const studentInfoLeft = [
+//       ["Student Name:", `${student.first_name} ${student.last_name}`],
+//       ["Admission No:", student.admission_number],
+//       ["Class:", student.class_name],
+//     ];
+
+//     const studentInfoRight = [
+//       ["Academic Year:", academicYearId],
+//       ["Term:", termName],
+//       ["Status:", totals.isFinalized ? "FINALIZED" : "DRAFT"],
+//       ["Date:", new Date().toLocaleDateString()],
+//     ];
+
+//     // Draw left column
+//     studentInfoLeft.forEach(([label, value], index) => {
+//       pdf.text(safeText(label), leftColumnX, yPosition);
+//       pdf.text(safeText(value), leftColumnX + 40, yPosition);
+//       yPosition += 6;
+//     });
+
+//     // Reset yPosition for right column
+//     let rightColumnY = yPosition - studentInfoLeft.length * 6;
+
+//     // Draw right column
+//     studentInfoRight.forEach(([label, value]) => {
+//       pdf.text(safeText(label), rightColumnX, rightColumnY);
+//       pdf.text(safeText(value), rightColumnX + 35, rightColumnY);
+//       rightColumnY += 6;
+//     });
+
+//     // Use the lower of the two column positions to continue
+//     yPosition = Math.max(yPosition, rightColumnY) + 8;
+
+//     // ==================== COMPULSORY FEES SECTION ====================
+//     const compulsoryBills = bills.filter((bill) => bill.is_compulsory);
+//     if (compulsoryBills && compulsoryBills.length > 0) {
+//       pdf.setFontSize(12);
+//       pdf.setFont("helvetica", "bold");
+//       pdf.setTextColor(...compulsoryColor);
+//       pdf.text("COMPULSORY FEES", 20, yPosition);
+//       yPosition += 8;
+
+//       pdf.setFontSize(9);
+//       pdf.setFont("helvetica", "normal");
+//       pdf.setTextColor(0, 0, 0);
+
+//       // Table headers
+//       pdf.setFillColor(240, 240, 240);
+//       pdf.rect(20, yPosition, pageWidth - 40, 5, "F");
+//       pdf.text("Description", 25, yPosition + 3.5);
+//       pdf.text("Amount (Ghc)", pageWidth - 30, yPosition + 3.5, {
+//         align: "right",
+//       });
+//       yPosition += 9;
+
+//       // Compulsory bills
+//       compulsoryBills.forEach((bill) => {
+//         if (yPosition > pageHeight - 80) {
+//           pdf.addPage();
+//           yPosition = 30;
+//           // Re-add header for new page
+//           addPageHeaderWithLogo(pdf, pageWidth, schoolSettings);
+//           yPosition = 50;
+//         }
+
+//         const amount = bill.finalAmount;
+//         pdf.text(safeText(bill.category_name), 25, yPosition);
+//         pdf.text(`Ghc ${safeNumber(amount)}`, pageWidth - 25, yPosition, {
+//           align: "right",
+//         });
+//         yPosition += 4;
+//       });
+
+//       // Compulsory total
+//       yPosition += 3;
+//       pdf.setFont("helvetica", "bold");
+//       pdf.text("Compulsory Total:", pageWidth - 75, yPosition);
+//       pdf.text(
+//         `Ghc ${safeNumber(totals.compulsory)}`,
+//         pageWidth - 25,
+//         yPosition,
+//         { align: "right" },
+//       );
+//       yPosition += 8;
+//     }
+
+//     // ==================== OPTIONAL FEES SECTION ====================
+//     const optionalBills = studentData.optionalBills || [];
+//     const displayOptionalBills = studentData.isFinalized
+//       ? optionalBills.filter((bill) => bill.isSelected)
+//       : optionalBills;
+
+//     if (displayOptionalBills.length > 0) {
+//       pdf.setFontSize(12);
+//       pdf.setFont("helvetica", "bold");
+//       pdf.setTextColor(...optionalColor);
+//       pdf.text("OPTIONAL FEES", 20, yPosition);
+//       yPosition += 8;
+
+//       pdf.setFontSize(9);
+//       pdf.setFont("helvetica", "normal");
+//       pdf.setTextColor(0, 0, 0);
+
+//       // Table headers
+//       pdf.setFillColor(240, 240, 240);
+//       pdf.rect(20, yPosition, pageWidth - 40, 5, "F");
+//       pdf.text("Description", 25, yPosition + 3.5);
+//       pdf.text("Amount (Ghc)", pageWidth - 30, yPosition + 3.5, {
+//         align: "right",
+//       });
+//       yPosition += 9;
+
+//       // Optional bills
+//       displayOptionalBills.forEach((bill) => {
+//         if (yPosition > pageHeight - 80) {
+//           pdf.addPage();
+//           yPosition = 30;
+//           // Re-add header for new page
+//           addPageHeaderWithLogo(pdf, pageWidth, schoolSettings);
+//           yPosition = 50;
+//         }
+
+//         const amount = bill.finalAmount || parseFloat(bill.amount);
+//         pdf.text(safeText(bill.category_name), 25, yPosition);
+//         pdf.text(`Ghc ${safeNumber(amount)}`, pageWidth - 25, yPosition, {
+//           align: "right",
+//         });
+//         yPosition += 4;
+//       });
+
+//       // Optional total
+//       if (studentData.isFinalized && totals.optional > 0) {
+//         yPosition += 3;
+//         pdf.setFont("helvetica", "bold");
+//         pdf.text("Optional Total:", pageWidth - 70, yPosition);
+//         pdf.text(
+//           `Ghc ${safeNumber(totals.optional)}`,
+//           pageWidth - 25,
+//           yPosition,
+//           { align: "right" },
+//         );
+//         yPosition += 8;
+//       } else if (!studentData.isFinalized && displayOptionalBills.length > 0) {
+//         yPosition += 3;
+//         pdf.setFont("helvetica", "normal");
+//         pdf.setTextColor(100, 100, 100);
+//         pdf.text("(Optional fees not included in total amount due)", 25, yPosition);
+//         pdf.setTextColor(0, 0, 0);
+//         yPosition += 6;
+//       }
+
+//       yPosition += 3;
+//       // pdf.setFont("helvetica", "bold");
+//       // pdf.text("Optional Total:", pageWidth - 70, yPosition);
+//       // pdf.text(
+//       //   `Ghc ${safeNumber(totals.optional)}`,
+//       //   pageWidth - 25,
+//       //   yPosition,
+//       //   { align: "right" },
+//       // );
+//       yPosition += 8;
+//     }
+
+//     // ==================== ARREARS SECTION ====================
+//     if (arrears.length > 0 || totals.arrearsTotal > 0) {
+//       pdf.setFontSize(12);
+//       pdf.setFont("helvetica", "bold");
+//       pdf.setTextColor(...arrearsColor);
+//       pdf.text("OUTSTANDING ARREARS", 20, yPosition);
+//       yPosition += 8;
+
+//       pdf.setFontSize(9);
+//       pdf.setFont("helvetica", "normal");
+//       pdf.setTextColor(0, 0, 0);
+
+//       if (arrears.length > 0) {
+//         arrears.forEach((arrear) => {
+//           if (yPosition > pageHeight - 60) {
+//             pdf.addPage();
+//             yPosition = 30;
+//             // Re-add header for new page
+//             addPageHeaderWithLogo(pdf, pageWidth, schoolSettings);
+//             yPosition = 50;
+//           }
+
+//           pdf.text(safeText(arrear.description), 25, yPosition);
+//           pdf.text(
+//             `Ghc ${safeNumber(arrear.amount)}`,
+//             pageWidth - 25,
+//             yPosition,
+//             { align: "right" },
+//           );
+//           yPosition += 5;
+//         });
+//       } else {
+//         if (yPosition > pageHeight - 60) {
+//           pdf.addPage();
+//           yPosition = 30;
+//           // Re-add header for new page
+//           addPageHeaderWithLogo(pdf, pageWidth, schoolSettings);
+//           yPosition = 50;
+//         }
+//         pdf.text("Previous Balance", 25, yPosition);
+//         pdf.text(
+//           `Ghc ${safeNumber(totals.arrearsTotal)}`,
+//           pageWidth - 25,
+//           yPosition,
+//           { align: "right" },
+//         );
+//         yPosition += 5;
+//       }
+
+//       yPosition += 3;
+//       pdf.setFont("helvetica", "bold");
+//       pdf.text("Total Arrears:", pageWidth - 70, yPosition);
+//       pdf.text(
+//         `Ghc ${safeNumber(totals.arrearsTotal)}`,
+//         pageWidth - 25,
+//         yPosition,
+//         { align: "right" },
+//       );
+//       yPosition += 8;
+//     }
+
+//     // ==================== CREDITS SECTION ====================
+//     if (overpayments.length > 0 || totals.overpaymentsTotal > 0) {
+//       pdf.setFontSize(12);
+//       pdf.setFont("helvetica", "bold");
+//       pdf.setTextColor(...creditColor);
+//       pdf.text("AVAILABLE CREDITS", 20, yPosition);
+//       yPosition += 8;
+
+//       pdf.setFontSize(9);
+//       pdf.setFont("helvetica", "normal");
+//       pdf.setTextColor(0, 0, 0);
+
+//       if (overpayments.length > 0) {
+//         overpayments.forEach((overpayment) => {
+//           if (yPosition > pageHeight - 60) {
+//             pdf.addPage();
+//             yPosition = 30;
+//             // Re-add header for new page
+//             addPageHeaderWithLogo(pdf, pageWidth, schoolSettings);
+//             yPosition = 50;
+//           }
+
+//           pdf.text(safeText(overpayment.description), 25, yPosition);
+//           pdf.text(
+//             `-Ghc ${safeNumber(overpayment.amount)}`,
+//             pageWidth - 25,
+//             yPosition,
+//             { align: "right" },
+//           );
+//           yPosition += 5;
+//         });
+//       } else {
+//         if (yPosition > pageHeight - 60) {
+//           pdf.addPage();
+//           yPosition = 30;
+//           // Re-add header for new page
+//           addPageHeaderWithLogo(pdf, pageWidth, schoolSettings);
+//           yPosition = 50;
+//         }
+//         pdf.text("Available Credit Balance", 25, yPosition);
+//         pdf.text(
+//           `-Ghc ${safeNumber(totals.overpaymentsTotal)}`,
+//           pageWidth - 25,
+//           yPosition,
+//           { align: "right" },
+//         );
+//         yPosition += 5;
+//       }
+
+//       yPosition += 3;
+//       pdf.setFont("helvetica", "bold");
+//       pdf.text("Total Credits:", pageWidth - 70, yPosition);
+//       pdf.text(
+//         `-Ghc ${safeNumber(totals.overpaymentsTotal)}`,
+//         pageWidth - 25,
+//         yPosition,
+//         { align: "right" },
+//       );
+//       yPosition += 8;
+//     }
+
+//     // ==================== FINAL TOTAL ====================
+//     yPosition += 5;
+//     pdf.setFillColor(255,255,255);
+//     pdf.rect(20, yPosition, pageWidth - 40, 10, "F");
+//     pdf.setTextColor(...darkColor);
+//     pdf.setFontSize(12);
+//     pdf.setFont("helvetica", "bold");
+
+//     if (totals.total > 0) {
+//       pdf.text("TOTAL AMOUNT DUE:", 25, yPosition + 6);
+//       pdf.text(
+//         `Ghc ${safeNumber(totals.total)}`,
+//         pageWidth - 25,
+//         yPosition + 6,
+//         { align: "right" },
+//       );
+//     } else {
+//       pdf.text("FULLY COVERED BY CREDITS", pageWidth / 2, yPosition + 6, {
+//         align: "center",
+//       });
+//     }
+
+//     yPosition += 20;
+
+//     // ==================== FOOTER ====================
+//     pdf.setTextColor(100, 100, 100);
+//     pdf.setFontSize(7);
+//     pdf.setFont("helvetica", "normal");
+
+//     // School bank details if available
+//     if (schoolSettings.bank_name && schoolSettings.account_number) {
+//       let bankInfo = `Bank: ${schoolSettings.bank_name}`;
+//       if (schoolSettings.account_name) {
+//         bankInfo += ` | A/C Name: ${schoolSettings.account_name}`;
+//       }
+//       bankInfo += ` | A/C No: ${schoolSettings.account_number}`;
+
+//       const bankLines = pdf.splitTextToSize(bankInfo, pageWidth - 30);
+//       bankLines.forEach((line, index) => {
+//         pdf.text(line, pageWidth / 2, pageHeight - 20 + index * 3, {
+//           align: "center",
+//         });
+//       });
+//     }
+
+//     pdf.text(
+//       `This is a ${
+//         totals.isFinalized ? "finalized" : "draft"
+//       } bill • Generated on ${new Date().toLocaleDateString()}`,
+//       pageWidth / 2,
+//       pageHeight - 15,
+//       { align: "center" },
+//     );
+//     pdf.text(
+//       `${schoolSettings.school_name} - Official Fee Bill`,
+//       pageWidth / 2,
+//       pageHeight - 10,
+//       { align: "center" },
+//     );
+//   }
+
+//   // Return PDF as buffer
+//   return Buffer.from(pdf.output("arraybuffer"));
+// };
+
 const generateCombinedBillsPDFJsPDF = async (
   studentsWithBills,
   className,
-  academicYearId,
+  academicYearLabel, // Changed from academicYearId to academicYearLabel
   termName,
 ) => {
   const { jsPDF } = require("jspdf");
@@ -9478,7 +10158,7 @@ const generateCombinedBillsPDFJsPDF = async (
     // Add header line
     pdf.setDrawColor(...primaryColor);
     pdf.setLineWidth(0.5);
-    const headerBottomY = 45; // Adjust based on your header height
+    const headerBottomY = 45;
     pdf.line(15, headerBottomY, pageWidth - 15, headerBottomY);
 
     // Reset y position after header
@@ -9506,8 +10186,9 @@ const generateCombinedBillsPDFJsPDF = async (
       ["Class:", student.class_name],
     ];
 
+    // FIXED: Use academicYearLabel instead of academicYearId
     const studentInfoRight = [
-      ["Academic Year:", academicYearId],
+      ["Academic Year:", academicYearLabel], // ← Changed here
       ["Term:", termName],
       ["Status:", totals.isFinalized ? "FINALIZED" : "DRAFT"],
       ["Date:", new Date().toLocaleDateString()],
@@ -9646,20 +10327,16 @@ const generateCombinedBillsPDFJsPDF = async (
         yPosition += 3;
         pdf.setFont("helvetica", "normal");
         pdf.setTextColor(100, 100, 100);
-        pdf.text("(Optional fees not included in total)", 25, yPosition);
+        pdf.text(
+          "(Optional fees not included in total amount due)",
+          25,
+          yPosition,
+        );
         pdf.setTextColor(0, 0, 0);
         yPosition += 6;
       }
 
       yPosition += 3;
-      pdf.setFont("helvetica", "bold");
-      pdf.text("Optional Total:", pageWidth - 70, yPosition);
-      pdf.text(
-        `Ghc ${safeNumber(totals.optional)}`,
-        pageWidth - 25,
-        yPosition,
-        { align: "right" },
-      );
       yPosition += 8;
     }
 
@@ -9787,9 +10464,9 @@ const generateCombinedBillsPDFJsPDF = async (
 
     // ==================== FINAL TOTAL ====================
     yPosition += 5;
-    pdf.setFillColor(...darkColor);
+    pdf.setFillColor(255, 255, 255);
     pdf.rect(20, yPosition, pageWidth - 40, 10, "F");
-    pdf.setTextColor(255, 255, 255);
+    pdf.setTextColor(...darkColor);
     pdf.setFontSize(12);
     pdf.setFont("helvetica", "bold");
 
@@ -9940,7 +10617,6 @@ const addPageHeaderWithLogo = async (pdf, pageWidth, schoolSettings = null) => {
 };
 
 //fetch students by class
-// Add this function to control.js
 const getStudentsByClass = async (req, res) => {
   try {
     const { class_id } = req.query;

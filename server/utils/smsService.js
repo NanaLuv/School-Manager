@@ -68,12 +68,14 @@ const getSchoolSettingsForEmail = async () => {
 // SMS Templates - gets schoolSettings internally
 const getSMSTemplates = async () => {
   const schoolSettings = await getSchoolSettingsForEmail();
-  const schoolName =
-    schoolSettings.school_short_name || schoolSettings.school_name || "REMALJ";
+  //const schoolName =
+  //schoolSettings.school_short_name || schoolSettings.school_name || "REMALJ";
+
+  const schoolName = "REMALJ Summer Sch";
 
   return {
     paymentReceipt: (student, payment, receiptNumber) => {
-      return `${schoolName}: Payment received for ${student.first_name} ${student.last_name}. Amount: Ghc ${payment.amount_paid.toFixed(2)}. Receipt: ${receiptNumber}. Thank you!`;
+      return `${schoolName} : Payment received for ${student.first_name} ${student.last_name}. Amount: Ghc ${payment.amount_paid.toFixed(2)}. Receipt: ${receiptNumber}. Thank you!`;
     },
 
     balanceReminder: (student, balance) => {

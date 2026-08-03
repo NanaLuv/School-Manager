@@ -1,16 +1,14 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import axios from "axios";
-
+import api from "../axiosconfig/axiosConfig";
 
 export const generateBillPDF = async (previewData, element = null) => {
   try {
     // First, fetch school settings
     let schoolSettings = null;
+
     try {
-      const response = await axios.get(
-        "http://localhost:3001/schmgt/school-settings"
-      );
+      const response = await api.get("/school-settings");
       schoolSettings = response.data;
 
       // Parse phone numbers if it's a JSON string
@@ -20,7 +18,7 @@ export const generateBillPDF = async (previewData, element = null) => {
       ) {
         try {
           schoolSettings.phone_numbers = JSON.parse(
-            schoolSettings.phone_numbers
+            schoolSettings.phone_numbers,
           );
         } catch (e) {
           schoolSettings.phone_numbers = [schoolSettings.phone_numbers];
@@ -48,33 +46,53 @@ export const generateBillPDF = async (previewData, element = null) => {
     // Colors
     const primaryColor = [41, 128, 185];
 
-    // Try to add logo if it exists
+    // Try to add logo if it exists - FIXED
     let hasLogo = false;
     if (schoolSettings.logo_filename) {
       try {
-        const logoUrl = `http://localhost:3001/uploads/school-logo/${schoolSettings.logo_filename}`;
+        // Use the full URL to load the logo - FIXED
+        const logoUrl = `/uploads/school-logo/${schoolSettings.logo_filename}`;
 
-        // Create image element
+        // Load image asynchronously with proper handling
         const img = new Image();
         img.crossOrigin = "anonymous";
 
-        // Convert image to base64
-        const imgBase64 = await new Promise((resolve, reject) => {
+        // Wait for image to load
+        await new Promise((resolve, reject) => {
           img.onload = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0);
-            resolve(canvas.toDataURL("image/png"));
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0);
+              const imgData = canvas.toDataURL("image/png");
+              resolve(imgData);
+            } catch (canvasError) {
+              reject(canvasError);
+            }
           };
-          img.onerror = reject;
-          img.src = logoUrl;
-        });
+          img.onerror = () => {
+            // Image failed to load, try with full URL
+            const fullUrl = `${window.location.origin}/uploads/school-logo/${schoolSettings.logo_filename}`;
+            img.src = fullUrl;
 
-        // Add logo to PDF (20x20mm)
-        pdf.addImage(imgBase64, "PNG", 15, 10, 20, 20);
-        hasLogo = true;
+            // If it still fails, reject after timeout
+            setTimeout(() => {
+              reject(new Error("Logo load timeout"));
+            }, 5000);
+          };
+          img.src = logoUrl;
+        })
+          .then((imgData) => {
+            // Add logo to PDF (20x20mm)
+            pdf.addImage(imgData, "PNG", 15, 10, 20, 20);
+            hasLogo = true;
+          })
+          .catch((error) => {
+            console.warn("Could not load logo:", error);
+            hasLogo = false;
+          });
       } catch (logoError) {
         console.warn("Could not load logo:", logoError);
         hasLogo = false;
@@ -111,7 +129,7 @@ export const generateBillPDF = async (previewData, element = null) => {
     // Split address if too long
     const addressLines = pdf.splitTextToSize(
       addressLine,
-      pageWidth - schoolNameX - 20
+      pageWidth - schoolNameX - 20,
     );
     addressLines.forEach((line, index) => {
       pdf.text(line, schoolNameX, 25 + index * 4);
@@ -163,7 +181,7 @@ export const generateBillPDF = async (previewData, element = null) => {
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(0, 0, 0);
 
-    // Student details in two columns
+    // Student details in two columns - FIXED: Added Academic Year
     const leftColumnX = 20;
     const rightColumnX = pageWidth / 2 + 10;
 
@@ -171,9 +189,11 @@ export const generateBillPDF = async (previewData, element = null) => {
       ["Student Name:", previewData.student.name],
       ["Admission No:", previewData.student.admission_number],
       ["Class:", previewData.student.class_name],
+      ["Academic Year:", previewData.academic_year || "Not Set"], // ← FIXED: Added Academic Year
     ];
 
     const studentInfoRight = [
+      ["Term:", previewData.term_name || "Not Set"], // ← FIXED: Added Term
       ["Bill Status:", previewData.isFinalized ? "FINALIZED" : "DRAFT"],
       ["Date:", new Date().toLocaleDateString()],
     ];
@@ -231,7 +251,7 @@ export const generateBillPDF = async (previewData, element = null) => {
           `Continuation - ${schoolSettings.school_name}`,
           pageWidth / 2,
           10,
-          { align: "center" }
+          { align: "center" },
         );
         pdf.setFontSize(9);
         pdf.setTextColor(0, 0, 0);
@@ -272,7 +292,7 @@ export const generateBillPDF = async (previewData, element = null) => {
       previewData.totals.compulsory.toFixed(2),
       pageWidth - 25,
       yPosition,
-      { align: "right" }
+      { align: "right" },
     );
     yPosition += 8;
 
@@ -310,7 +330,7 @@ export const generateBillPDF = async (previewData, element = null) => {
             `Continuation - ${schoolSettings.school_name}`,
             pageWidth / 2,
             10,
-            { align: "center" }
+            { align: "center" },
           );
           pdf.setFontSize(9);
           pdf.setTextColor(0, 0, 0);
@@ -332,7 +352,7 @@ export const generateBillPDF = async (previewData, element = null) => {
           pdf.setTextColor(100, 100, 100);
           const descLines = pdf.splitTextToSize(
             bill.description,
-            pageWidth - 50
+            pageWidth - 50,
           );
           descLines.forEach((line, i) => {
             pdf.text(line, 30, yPosition + i * 3);
@@ -353,7 +373,7 @@ export const generateBillPDF = async (previewData, element = null) => {
         previewData.totals.optional.toFixed(2),
         pageWidth - 25,
         yPosition,
-        { align: "right" }
+        { align: "right" },
       );
       yPosition += 8;
     }
@@ -382,7 +402,7 @@ export const generateBillPDF = async (previewData, element = null) => {
             `Continuation - ${schoolSettings.school_name}`,
             pageWidth / 2,
             10,
-            { align: "center" }
+            { align: "center" },
           );
           pdf.setFontSize(9);
           pdf.setTextColor(0, 0, 0);
@@ -394,7 +414,7 @@ export const generateBillPDF = async (previewData, element = null) => {
           parseFloat(arrear.amount).toFixed(2),
           pageWidth - 25,
           yPosition,
-          { align: "right" }
+          { align: "right" },
         );
         yPosition += 6;
       });
@@ -406,7 +426,7 @@ export const generateBillPDF = async (previewData, element = null) => {
         previewData.totals.arrearsTotal.toFixed(2),
         pageWidth - 25,
         yPosition,
-        { align: "right" }
+        { align: "right" },
       );
       yPosition += 8;
     }
@@ -435,7 +455,7 @@ export const generateBillPDF = async (previewData, element = null) => {
             `Continuation - ${schoolSettings.school_name}`,
             pageWidth / 2,
             10,
-            { align: "center" }
+            { align: "center" },
           );
           pdf.setFontSize(9);
           pdf.setTextColor(0, 0, 0);
@@ -447,7 +467,7 @@ export const generateBillPDF = async (previewData, element = null) => {
           `-${parseFloat(overpayment.amount).toFixed(2)}`,
           pageWidth - 25,
           yPosition,
-          { align: "right" }
+          { align: "right" },
         );
         yPosition += 6;
       });
@@ -459,16 +479,16 @@ export const generateBillPDF = async (previewData, element = null) => {
         `-${previewData.totals.overpaymentsTotal.toFixed(2)}`,
         pageWidth - 25,
         yPosition,
-        { align: "right" }
+        { align: "right" },
       );
       yPosition += 8;
     }
 
     // ==================== FINAL TOTAL ====================
     yPosition += 5;
-    pdf.setFillColor(33, 37, 41);
+    pdf.setFillColor(255, 255, 255);
     pdf.rect(20, yPosition, pageWidth - 40, 10, "F");
-    pdf.setTextColor(255, 255, 255);
+    pdf.setTextColor(33, 37, 41);
     pdf.setFontSize(12);
     pdf.setFont("helvetica", "bold");
 
@@ -478,7 +498,7 @@ export const generateBillPDF = async (previewData, element = null) => {
         `Ghc ${previewData.totals.total.toFixed(2)}`,
         pageWidth - 25,
         yPosition + 6,
-        { align: "right" }
+        { align: "right" },
       );
     } else {
       pdf.text("FULLY COVERED BY CREDITS", pageWidth / 2, yPosition + 6, {
@@ -515,13 +535,13 @@ export const generateBillPDF = async (previewData, element = null) => {
       } bill • Generated on ${new Date().toLocaleDateString()}`,
       pageWidth / 2,
       pageHeight - 15,
-      { align: "center" }
+      { align: "center" },
     );
     pdf.text(
       `${schoolSettings.school_name} - Official Fee Bill`,
       pageWidth / 2,
       pageHeight - 10,
-      { align: "center" }
+      { align: "center" },
     );
 
     // Save the PDF

@@ -57,6 +57,7 @@ const Topbar = () => {
       "/profile": "My Profile",
       "/settings": "Settings",
       "/finance/bill-overview": "Bill Overview",
+      "/finance/select-bills": "Select Bills",
       // Add more mappings as needed
     };
 

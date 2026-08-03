@@ -7,21 +7,34 @@ import {
   DocumentTextIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { generateBillPDF } from "../bill-preview/pdfService"
+import { generateBillPDF } from "../bill-preview/pdfService";
+import { useAcademicData } from "../../hooks/useAcademicContext";
 
 const BillPreview = ({ preview, onClose, onGeneratePDF }) => {
   const [generatingPDF, setGeneratingPDF] = useState(false);
-  const billRef = useRef(); 
+  const billRef = useRef();
 
+  // Get academic data from context
+  const { getSelectedAcademicYear, getSelectedTerm } = useAcademicData();
+  const selectedYear = getSelectedAcademicYear();
+  const selectedTermObj = getSelectedTerm();
 
-  // NEW: Enhanced PDF generation handler
+  // Enhanced PDF generation handler with academic data
   const handleGeneratePDF = async () => {
     if (!preview) return;
 
     setGeneratingPDF(true);
     try {
-      await generateBillPDF(preview);
+      // Prepare data with academic context
+      const pdfData = {
+        ...preview,
+        academic_year: selectedYear?.year_label || "Not Set",
+        term_name: selectedTermObj?.term_name || "Not Set",
+        academic_year_id: selectedYear?.id || null,
+        term_id: selectedTermObj?.id || null,
+      };
 
+      await generateBillPDF(pdfData);
     } catch (error) {
       console.error("PDF generation failed:", error);
       alert("Failed to generate PDF. Please try again.");
@@ -32,10 +45,14 @@ const BillPreview = ({ preview, onClose, onGeneratePDF }) => {
 
   if (!preview) return null;
 
+  // Get academic year and term display values
+  const academicYearDisplay = selectedYear?.year_label || "Not Set";
+  const termDisplay = selectedTermObj?.term_name || "Not Set";
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div
-        ref={billRef} 
+        ref={billRef}
         className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
@@ -45,6 +62,14 @@ const BillPreview = ({ preview, onClose, onGeneratePDF }) => {
             <p className="text-gray-600">
               {preview.student.name} - {preview.student.admission_number}
             </p>
+            <div className="flex items-center space-x-4 mt-1">
+              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                {academicYearDisplay}
+              </span>
+              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                {termDisplay}
+              </span>
+            </div>
           </div>
           <div className="flex items-center space-x-3">
             <button
@@ -66,12 +91,12 @@ const BillPreview = ({ preview, onClose, onGeneratePDF }) => {
 
         {/* Bill Content */}
         <div className="p-6">
-          {/* Student Info */}
+          {/* Student Info with Academic Context */}
           <div className="bg-gray-50 p-4 rounded-lg mb-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="font-medium text-gray-700">Student:</span>
-                <div>{preview.student.name}</div>
+                <div className="font-medium">{preview.student.name}</div>
               </div>
               <div>
                 <span className="font-medium text-gray-700">Admission No:</span>
@@ -80,6 +105,18 @@ const BillPreview = ({ preview, onClose, onGeneratePDF }) => {
               <div>
                 <span className="font-medium text-gray-700">Class:</span>
                 <div>{preview.student.class_name}</div>
+              </div>
+              <div>
+                <span className="font-medium text-gray-700">
+                  Academic Year:
+                </span>
+                <div className="font-medium text-blue-700">
+                  {academicYearDisplay}
+                </div>
+              </div>
+              <div>
+                <span className="font-medium text-gray-700">Term:</span>
+                <div className="font-medium text-blue-700">{termDisplay}</div>
               </div>
               <div>
                 <span className="font-medium text-gray-700">Status:</span>
@@ -304,8 +341,13 @@ const BillPreview = ({ preview, onClose, onGeneratePDF }) => {
             )}
           </div>
 
-          {/* Footer Notes */}
-          <div className="mt-4 text-xs text-gray-500 text-center">
+          {/* Footer Notes with Academic Context */}
+          <div className="mt-4 text-xs text-gray-500 text-center space-y-1">
+            <p>
+              <span className="font-medium">Academic Year:</span>{" "}
+              {academicYearDisplay} •
+              <span className="font-medium ml-2">Term:</span> {termDisplay}
+            </p>
             <p>
               This is a {preview.isFinalized ? "finalized" : "preview"} bill.{" "}
               {!preview.isFinalized &&

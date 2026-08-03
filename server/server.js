@@ -24,6 +24,17 @@ app.use(
 app.get("/test", (req, res) => {
   res.json({ message: "CORS working" });
 });
+
+app.get("/health", async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    connection.release();
+    res.status(200).json({ status: "ok", db: "connected" });
+  } catch (err) {
+    res.status(503).json({ status: "error", db: "unreachable" });
+  }
+});
+
 app.use(express.json());
 
 app.use("/schmgt", router);
