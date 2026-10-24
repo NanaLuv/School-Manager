@@ -517,7 +517,6 @@ const FinancialRecords = () => {
       } else if (response.data && response.data.data) {
         setPaymentDetails(response.data.data);
       } else {
-        console.log("Unexpected response structure:", response.data);
         setPaymentDetails([]);
       }
     } catch (error) {
@@ -1084,7 +1083,7 @@ const FinancialRecords = () => {
               <div className="flex items-center">
                 <UserGroupIcon className="w-8 h-8 text-blue-500 mr-3" />
                 <div>
-                  <p className="text-sm text-gray-600">Total Students</p>
+                  <p className="text-sm text-gray-600">Total Students with finalized bill</p>
                   <p className="text-xl font-bold text-gray-900">
                     {studentsSummary.total_students || 0}
                   </p>

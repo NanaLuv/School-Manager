@@ -58,10 +58,13 @@ const Topbar = () => {
       "/settings": "Settings",
       "/finance/bill-overview": "Bill Overview",
       "/finance/select-bills": "Select Bills",
+      "/student-details": "Student Details",
+      "/academics/student-report": "Student Report",
+      "/messages": "Messages",
       // Add more mappings as needed
     };
 
-    return pathMap[path] || "School Management System";
+    return pathMap[path] || "Trackers";
   };
 
   // Toggle dark mode

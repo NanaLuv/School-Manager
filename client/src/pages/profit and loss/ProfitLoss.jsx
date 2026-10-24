@@ -74,6 +74,7 @@ const ProfitLoss = () => {
         throw new Error("Invalid response from server");
       }
       setPlData(plResponse.data);
+      console.log("Profit & Loss Data:", plResponse.data);
       setTrends(trendsResponse.data);
 
       // Load charts after data is ready

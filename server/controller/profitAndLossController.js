@@ -77,16 +77,21 @@ const getProfitLossData = async (req, res) => {
     // 1. PV Expenses (Paid status only)
     const [pvExpenses] = await pool.query(
       `SELECT 
-         COALESCE(SUM(pv.total_amount), 0) as total_expenses,
-         COUNT(DISTINCT pv.id) as total_pvs,
-         COUNT(DISTINCT pi.expense_category) as expense_categories,
-         COUNT(DISTINCT pv.paid_to) as unique_payees,
-         COALESCE(AVG(pv.total_amount), 0) as average_expense_per_pv
+         COALESCE(SUM(pv.total_amount), 0) AS total_expenses,
+         COUNT(*) AS total_pvs,
+         (
+           SELECT COUNT(DISTINCT pi.expense_category)
+           FROM pv_items pi
+           INNER JOIN pv_headers pvi ON pvi.id = pi.pv_header_id
+           WHERE pvi.pv_date BETWEEN ? AND ?
+             AND pvi.status = 'Paid'
+         ) AS expense_categories,
+         COUNT(DISTINCT pv.paid_to) AS unique_payees,
+         COALESCE(AVG(pv.total_amount), 0) AS average_expense_per_pv
        FROM pv_headers pv
-       LEFT JOIN pv_items pi ON pv.id = pi.pv_header_id
        WHERE pv.pv_date BETWEEN ? AND ?
          AND pv.status = 'Paid'`,
-      [defaultStartDate, defaultEndDate],
+      [defaultStartDate, defaultEndDate, defaultStartDate, defaultEndDate],
     );
 
     // Get PV expense details separately if needed

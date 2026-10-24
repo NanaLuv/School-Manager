@@ -389,6 +389,7 @@ const StudentBillSelection = () => {
         `/checkstudentpayments/${studentId}?academic_year_id=${context.academic_year_id}&term_id=${context.term_id}`,
       );
 
+
       // CRITICAL FIX: hasPayments should be true ONLY if there are payments for THIS SPECIFIC TERM
       setHasPayments(paymentsResponse.data.hasPayments);
     } catch (error) {
@@ -596,6 +597,7 @@ const StudentBillSelection = () => {
         arrears_bill_id: arrearsBillId, // NEW
         apply_overpayments_to_bill_id: overpaymentsBillId, // NEW
       });
+
 
       if (response.data.finalized) {
         setIsFinalized(true);

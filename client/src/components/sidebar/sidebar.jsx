@@ -31,6 +31,8 @@ import {
   ArrowLeftEndOnRectangleIcon,
   EnvelopeIcon,
   MagnifyingGlassCircleIcon,
+  BookmarkSlashIcon,
+  ArrowRightEndOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../../pages/contexts/AuthContext";
 
@@ -71,13 +73,13 @@ const Sidebar = () => {
       name: "Students",
       icon: UsersIcon,
       path: "/students-lists",
-      roles: ["admin","academics"],
+      roles: ["admin", "academics"],
     },
     {
       name: "Teachers",
       icon: AcademicCapIcon,
       path: "/teachers/list",
-      roles: ["admin","academics"],
+      roles: ["admin", "academics"],
     },
     {
       name: "Classes",
@@ -93,16 +95,16 @@ const Sidebar = () => {
           name: "Class Assignments",
           path: "/classes/assignments",
           icon: UsersIcon,
-          roles: ["admin","academics"],
+          roles: ["admin", "academics"],
         },
         {
           name: "Class Teachers",
           path: "/classes/teachers",
           icon: AcademicCapIcon,
-          roles: ["admin","academics"],
+          roles: ["admin", "academics"],
         },
       ],
-      roles: ["admin","academics"],
+      roles: ["admin", "academics"],
     },
     {
       name: "Subjects",
@@ -112,17 +114,17 @@ const Sidebar = () => {
           name: "Subject List",
           path: "/subjects/list",
           icon: QueueListIcon,
-          roles: ["admin","academics"],
+          roles: ["admin", "academics"],
         },
 
         {
           name: "Subject Assignments",
           path: "/subjects-assignments",
           icon: BookOpenIcon,
-          roles: ["admin","academics"],
+          roles: ["admin", "academics"],
         },
       ],
-      roles: ["admin","academics"],
+      roles: ["admin", "academics"],
     },
 
     {
@@ -164,19 +166,26 @@ const Sidebar = () => {
           name: "Grade Scales",
           icon: CalendarIcon,
           path: "/academics/grading-scales",
-          roles: ["admin","academics"],
+          roles: ["admin", "academics"],
         },
+
         {
           name: "Approve Scores",
           icon: AcademicCapIcon,
           path: "/academics/report-cards/generate",
-          roles: ["admin","academics"],
+          roles: ["admin", "academics"],
         },
         {
           name: "Assessment",
           icon: BookOpenIcon,
           path: "/academics/assessment",
           roles: ["admin", "teacher", "academics"],
+        },
+        {
+          name: "Student Report",
+          path: "/academics/student-report",
+          icon: BookmarkSlashIcon,
+          roles: ["admin", "teacher", "student", "academics"],
         },
       ],
       roles: ["admin", "teacher", "student", "academics"],
@@ -260,6 +269,58 @@ const Sidebar = () => {
       name: "Profit & Loss",
       icon: ChartPieIcon,
       path: "/profit-loss",
+      roles: ["admin", "accountant"],
+    },
+
+    {
+      name: "Cards",
+      icon: BookOpenIcon,
+      subItems: [
+        {
+          name: "PickUp/DropOff",
+          icon: ChartPieIcon,
+          path: "/pickup-dropoff",
+          roles: ["admin", "accountant"],
+        },
+
+        {
+          name: "Card Enroll",
+          icon: BookmarkIcon,
+          path: "/card-enroll",
+          roles: ["admin"],
+        },
+        {
+          name: "Card Details",
+          icon: BookmarkIcon,
+          path: "/card-details",
+          roles: ["admin"],
+        },
+        {
+          name: "Quick Scan",
+          icon: BookmarkSquareIcon,
+          path: "/quick-scan",
+          roles: ["admin"],
+        },
+        {
+          name: "Student Details",
+          icon: BookmarkSlashIcon,
+          path: "/student-details",
+          roles: ["admin"],
+        },
+        {
+          name: "Pickup Logs",
+          icon: BookmarkIcon,
+          path: "/pickup-logs",
+          roles: ["admin"],
+        },
+      ],
+      roles: ["admin", "accountant"],
+    },
+
+    {
+      name: "Messages",
+      icon: ArrowRightEndOnRectangleIcon,
+      path: "/messages",
       roles: ["admin", "accountant"],
     },
 

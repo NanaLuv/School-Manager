@@ -280,6 +280,7 @@ const ReceivePayment = () => {
             `/getstudentbills?student_id=${studentId}&academic_year_id=${academicYearId}&term_id=${termId}`,
           );
 
+
           // Based on your code, bills are in response.data.bills
           const allBills = billsRes.data?.bills || [];
 
@@ -579,9 +580,9 @@ const ReceivePayment = () => {
           }));
         }
 
-        setTimeout(() => {
-          navigate("/finance/student-bills");
-        }, 2000);
+        // setTimeout(() => {
+        //   navigate("/finance/student-bills");
+        // }, 2000);
       }
     } catch (error) {
       console.error("Error processing payment:", error);

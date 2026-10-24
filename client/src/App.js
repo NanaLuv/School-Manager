@@ -47,6 +47,14 @@ import UserActivityLogs from "./pages/user activity logs/userActivityLogs";
 import EmailLogs from "./pages/emaillogs/EmailLogs";
 import AssessmentDashboard from "./pages/continuous assessment/AssessmentDashboard";
 import BillAnalysisDashboard from "./pages/fees/BillOverview";
+import CardScanScreen from "./pages/cards/Cardscanscreen";
+import EnrollCardPanel from "./pages/cards/Enrollcardpanel";
+import PickupLogPage from "./pages/cards/Pickuplogpage";
+import CardDetailsPage from "./pages/cards/Carddetailspage";
+import QuickScanPage from "./pages/cards/Quickscanpage";
+import StudentDetailsPage from "./pages/cards/Studentdetailspage";
+import MessagingPage from "./pages/messages.jsx/MessagingPage";
+import SingleReportCardPage from "./pages/report cards/Singlereportcardpage";
 
 function App() {
   return (
@@ -264,6 +272,16 @@ const ProtectedAppRoutes = () => {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/academics/student-report"
+        element={
+          <ProtectedRoute requiredRoles={["admin", "teacher", "academics"]}>
+            <Layout>
+              <SingleReportCardPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/academics/report-cards/generate"
@@ -467,6 +485,90 @@ const ProtectedAppRoutes = () => {
           <ProtectedRoute requiredRoles={["admin", "accountant"]}>
             <Layout>
               <ProfitLoss />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pickup-dropoff"
+        element={
+          <ProtectedRoute
+            requiredRoles={["admin", "accountant", "academics", "teacher"]}
+          >
+            <Layout>
+              <CardScanScreen />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/card-enroll"
+        element={
+          <ProtectedRoute
+            requiredRoles={["admin", "accountant", "academics", "teacher"]}
+          >
+            <Layout>
+              <EnrollCardPanel />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/card-details"
+        element={
+          <ProtectedRoute
+            requiredRoles={["admin", "accountant", "academics", "teacher"]}
+          >
+            <Layout>
+              <CardDetailsPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/quick-scan"
+        element={
+          <ProtectedRoute
+            requiredRoles={["admin", "accountant", "academics", "teacher"]}
+          >
+            <Layout>
+              <QuickScanPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student-details"
+        element={
+          <ProtectedRoute
+            requiredRoles={["admin", "accountant", "academics", "teacher"]}
+          >
+            <Layout>
+              <StudentDetailsPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pickup-logs"
+        element={
+          <ProtectedRoute
+            requiredRoles={["admin", "accountant", "academics", "teacher"]}
+          >
+            <Layout>
+              <PickupLogPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/messages"
+        element={
+          <ProtectedRoute
+            requiredRoles={["admin", "accountant", "academics", "teacher"]}
+          >
+            <Layout>
+              <MessagingPage />
             </Layout>
           </ProtectedRoute>
         }

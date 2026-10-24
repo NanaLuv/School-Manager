@@ -11,7 +11,9 @@ const app = express();
 // cors configuration to allow requests from the frontend URL
 
 app.use(
-  cors(),
+  cors({
+    maxAge: 86400, // 24 hours
+  }),
   // cors({
   //   origin:
   //     "https://school-manager-rhab.vercel.app" ||
@@ -21,6 +23,7 @@ app.use(
   //   allowedHeaders: ["Content-Type", "Authorization"],
   // }),
 );
+
 app.get("/test", (req, res) => {
   res.json({ message: "CORS working" });
 });
@@ -36,6 +39,17 @@ app.get("/health", async (req, res) => {
 });
 
 app.use(express.json());
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    console.log(
+      `${req.method} ${req.originalUrl} → ${res.statusCode} (${duration}ms)`,
+    );
+  });
+  next();
+});
 
 app.use("/schmgt", router);
 app.use("/uploads", express.static("uploads"));

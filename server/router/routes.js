@@ -219,6 +219,29 @@ const {
   markPVAsPaid,
   // exportPVHeaders,
 } = require("../controller/pvController");
+const {
+  getAuthorizedPersonsForStudent,
+  enrollCard,
+  revokeCard,
+  lookupCard,
+  logPickupDropoff,
+  getPickupLog,
+  createAuthorizedPerson,
+  searchAuthorizedPersons,
+  linkAuthorizedPersonToStudentsBulk,
+  logPickupDropoffBulk,
+  getCardDetails,
+  searchStudentsForEnrollment,
+  linkBulkAuthorizedPersons,
+  linkAuthorizedPersonToStudent,
+  removeStudentAuthorizedPerson,
+  sendBulkPickupDropoffSMS,
+  quickScanCard,
+  getStudentAccessDetails,
+  autoLinkGuardianFromStudent,
+  pinPickupLog,
+} = require("../controller/pickupcardcontroller");
+const { getRecipientsPreview, sendBulkMessage } = require("../controller/messagesController");
 
 router.post("/login", loginLimiter, failedLoginLimiter, loginUser);
 router.get("/login-status", getRateLimitStatus);
@@ -654,5 +677,42 @@ router.get(
 );
 
 router.get("/getstudentsbybillcategory", getStudentsByBillCategory);
+
+//pick up card routes
+
+router.get("/authorized-persons/search", searchAuthorizedPersons);
+router.get("/students/search-for-enrollment", searchStudentsForEnrollment);
+router.get("/access-cards/details/:card_uid", getCardDetails);
+router.get("/authorized-persons/:studentId", getAuthorizedPersonsForStudent);
+router.post(
+  "/authorized-persons",
+  upload.single("photo"),
+  createAuthorizedPerson,
+);
+router.post("/access-cards", enrollCard);
+router.put("/access-cards/:id/revoke", revokeCard);
+router.get("/access-cards/lookup/:card_uid", lookupCard);
+router.post("/pickup-log", logPickupDropoff);
+router.get("/pickup-log", getPickupLog);
+router.post(
+  "/authorized-persons/:personId/link/:studentId",
+  linkAuthorizedPersonToStudent
+);
+router.post(
+  "/authorized-persons/:personId/link-bulk",
+  linkAuthorizedPersonToStudentsBulk,
+);
+router.post("/pickup-log/bulk", logPickupDropoffBulk);
+router.delete("/student-authorized-persons/:linkId", removeStudentAuthorizedPerson);
+router.post("/pickup-log/send-bulk-sms", sendBulkPickupDropoffSMS);
+router.post("/access-cards/quick-scan", quickScanCard);
+router.get("/students/:studentId/access-full-details", getStudentAccessDetails);
+router.post("/authorized-persons/auto-link-from-student", autoLinkGuardianFromStudent);
+router.put("/pickup-log/:id/pin", pinPickupLog);
+
+// messages routes
+router.get("/messaging/recipients-preview", getRecipientsPreview);
+router.post("/messaging/send", sendBulkMessage);
+
 
 module.exports = router;

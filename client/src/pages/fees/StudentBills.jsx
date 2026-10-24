@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   PlusIcon,
   EyeIcon,
@@ -66,16 +72,11 @@ const StudentBills = () => {
   const [previewBill, setPreviewBill] = useState(null);
 
   // Delete operations states
-  const [deletingArrears, setDeletingArrears] = useState(false);
-  const [deletingOverpayments, setDeletingOverpayments] = useState(false);
+
   const [showSuccessMessage, setShowSuccessMessage] = useState(null);
   const [showErrorMessage, setShowErrorMessage] = useState(null);
-  const [arrearsDeleted, setArrearsDeleted] = useState(false);
-  const [overpaymentsDeleted, setOverpaymentsDeleted] = useState(false);
 
-  // Collapsible section state
-  // const [showDeleteSection, setShowDeleteSection] = useState(false);
-  // const [autoHideTimer, setAutoHideTimer] = useState(null);
+  const abortControllerRef = useRef(null);
 
   // Filters with debounced search
   const [filters, setFilters] = usePersistedState("studentBillsFilters", {
@@ -103,23 +104,41 @@ const StudentBills = () => {
   });
 
   // Sync filters with academic context
-  useEffect(() => {
-    if (
-      selectedAcademicYear &&
-      selectedAcademicYear !== filters.academic_year_id
-    ) {
-      setFilters((prev) => ({
-        ...prev,
-        academic_year_id: selectedAcademicYear,
-      }));
-    }
+  // useEffect(() => {
+  //   if (
+  //     selectedAcademicYear &&
+  //     selectedAcademicYear !== filters.academic_year_id
+  //   ) {
+  //     setFilters((prev) => ({
+  //       ...prev,
+  //       academic_year_id: selectedAcademicYear,
+  //     }));
+  //   }
 
-    if (selectedTerm && selectedTerm !== filters.term_id) {
-      setFilters((prev) => ({
-        ...prev,
-        term_id: selectedTerm,
-      }));
-    }
+  //   if (selectedTerm && selectedTerm !== filters.term_id) {
+  //     setFilters((prev) => ({
+  //       ...prev,
+  //       term_id: selectedTerm,
+  //     }));
+  //   }
+  // }, [selectedAcademicYear, selectedTerm]);
+
+  useEffect(() => {
+    if (!selectedAcademicYear && !selectedTerm) return;
+
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (
+        selectedAcademicYear &&
+        selectedAcademicYear !== prev.academic_year_id
+      ) {
+        next.academic_year_id = selectedAcademicYear;
+      }
+      if (selectedTerm && selectedTerm !== prev.term_id) {
+        next.term_id = selectedTerm;
+      }
+      return next;
+    });
   }, [selectedAcademicYear, selectedTerm]);
 
   // Initialize data
@@ -128,24 +147,56 @@ const StudentBills = () => {
   }, []);
 
   // Debounced effect for filters - fetches bills when debounced filters change
+  // useEffect(() => {
+  //   // Reset to page 1 when filters change
+  //   setPagination((prev) => ({ ...prev, page: 1 }));
+
+  //   if (
+  //     filters.class_id ||
+  //     filters.academic_year_id ||
+  //     filters.term_id ||
+  //     filters.status !== "all"
+  //   ) {
+  //     fetchBills(1);
+  //   }
+  // }, [
+  //   filters.class_id,
+  //   filters.academic_year_id,
+  //   filters.term_id,
+  //   filters.status,
+  // ]);
+
   useEffect(() => {
-    // Reset to page 1 when filters change
     setPagination((prev) => ({ ...prev, page: 1 }));
 
-    if (
-      filters.class_id ||
-      filters.academic_year_id ||
-      filters.term_id ||
-      filters.status !== "all"
-    ) {
-      fetchBills(1);
-    }
+    const timeoutId = setTimeout(() => {
+      if (
+        filters.class_id ||
+        filters.academic_year_id ||
+        filters.term_id ||
+        filters.status !== "all"
+      ) {
+        fetchBills(1);
+      }
+    }, 150);
+
+    // If filters change again before 150ms, this cancels the pending fetch.
+    // Only the last filter state in a rapid burst actually reaches fetchBills.
+    return () => clearTimeout(timeoutId);
   }, [
     filters.class_id,
     filters.academic_year_id,
     filters.term_id,
     filters.status,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Fetch initial data
   const fetchInitialData = async () => {
@@ -165,8 +216,95 @@ const StudentBills = () => {
   };
 
   // Memoized fetch bills function
+  // const fetchBills = useCallback(
+  //   async (page = pagination.page) => {
+  //     // Cancel whatever request is currently in flight before starting a new one
+  //     if (abortControllerRef.current) {
+  //       abortControllerRef.current.abort();
+  //     }
+  //     const controller = new AbortController();
+  //     abortControllerRef.current = controller;
+
+  //     setLoading(true);
+  //     try {
+  //       const params = new URLSearchParams({
+  //         page: page,
+  //         limit: pagination.limit,
+  //         ...(filters.class_id && { class_id: filters.class_id }),
+  //         ...(filters.academic_year_id && {
+  //           academic_year_id: filters.academic_year_id,
+  //         }),
+  //         ...(filters.term_id && { term_id: filters.term_id }),
+  //         ...(filters.status !== "all" && { status: filters.status }),
+  //         active_only: "true",
+  //       });
+
+  //       const response = await api.get(`/getstudentbills?${params}`);
+  //       const billsData = response.data.bills || [];
+  //       const studentSummaries = response.data.student_summaries || {};
+  //       const paginationData = response.data.pagination || {
+  //         page: page,
+  //         limit: pagination.limit,
+  //         total: billsData.length,
+  //         totalPages: Math.ceil(billsData.length / pagination.limit),
+  //         hasNextPage: false,
+  //         hasPrevPage: page > 1,
+  //       };
+
+  //       // Everything needed (bills, arrears totals, overpayment totals,
+  //       // finalized bill) arrives in this one response now.
+  //       const groupedData = groupBillsByStudent(billsData, studentSummaries);
+
+  //       // Keep these two state slices for components (e.g. FeeBreakdown,
+  //       // BillPreview) that still expect a per-student arrears/overpayments
+  //       // *list* rather than just a total. We derive lightweight single-entry
+  //       // "totals only" shapes here with zero extra network calls.
+  //       const arrearsStateUpdate = {};
+  //       const overpaymentsStateUpdate = {};
+  //       Object.values(studentSummaries).forEach((summary) => {
+  //         arrearsStateUpdate[summary.student_id] =
+  //           summary.arrears_total > 0
+  //             ? [
+  //                 {
+  //                   amount: summary.arrears_total,
+  //                   description: "Outstanding balance",
+  //                 },
+  //               ]
+  //             : [];
+  //         overpaymentsStateUpdate[summary.student_id] =
+  //           summary.overpayments_total > 0
+  //             ? [
+  //                 {
+  //                   amount: summary.overpayments_total,
+  //                   description: "Available credit",
+  //                 },
+  //               ]
+  //             : [];
+  //       });
+
+  //       setStudentArrears(arrearsStateUpdate);
+  //       setStudentOverpayments(overpaymentsStateUpdate);
+  //       setStudentsWithBills(groupedData);
+  //       setPagination(paginationData);
+  //     } catch (error) {
+  //       console.error("Error fetching student bills:", error);
+  //       alert("Error loading student bills");
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   },
+  //   [filters, pagination.limit, pagination.page],
+  // );
+
   const fetchBills = useCallback(
     async (page = pagination.page) => {
+      // Cancel whatever request is currently in flight before starting a new one
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       setLoading(true);
       try {
         const params = new URLSearchParams({
@@ -181,10 +319,11 @@ const StudentBills = () => {
           active_only: "true",
         });
 
-        const response = await api.get(`/getstudentbills?${params}`);
-
-        // Handle both old and new response formats
-        const billsData = response.data.bills || response.data;
+        const response = await api.get(`/getstudentbills?${params}`, {
+          signal: controller.signal,
+        });
+        const billsData = response.data.bills || [];
+        const studentSummaries = response.data.student_summaries || {};
         const paginationData = response.data.pagination || {
           page: page,
           limit: pagination.limit,
@@ -194,37 +333,62 @@ const StudentBills = () => {
           hasPrevPage: page > 1,
         };
 
-        const groupedData = groupBillsByStudent(billsData);
-        const studentIds = Object.keys(groupedData);
+        const groupedData = groupBillsByStudent(billsData, studentSummaries);
 
-        // Fetch balances and term bills in parallel
-        await Promise.all([
-          fetchStudentBalances(studentIds),
-          fetchStudentTermBills(groupedData).then(
-            (studentDataWithTermBills) => {
-              setStudentsWithBills(studentDataWithTermBills);
-            },
-          ),
-        ]);
+        const arrearsStateUpdate = {};
+        const overpaymentsStateUpdate = {};
+        Object.values(studentSummaries).forEach((summary) => {
+          arrearsStateUpdate[summary.student_id] =
+            summary.arrears_total > 0
+              ? [
+                  {
+                    amount: summary.arrears_total,
+                    description: "Outstanding balance",
+                  },
+                ]
+              : [];
+          overpaymentsStateUpdate[summary.student_id] =
+            summary.overpayments_total > 0
+              ? [
+                  {
+                    amount: summary.overpayments_total,
+                    description: "Available credit",
+                  },
+                ]
+              : [];
+        });
 
+        setStudentArrears(arrearsStateUpdate);
+        setStudentOverpayments(overpaymentsStateUpdate);
+        setStudentsWithBills(groupedData);
         setPagination(paginationData);
       } catch (error) {
+        // A cancelled request is EXPECTED whenever a newer one supersedes it —
+        // not an error, just ignore it silently.
+        if (error.name === "CanceledError" || error.code === "ERR_CANCELED") {
+          return;
+        }
         console.error("Error fetching student bills:", error);
         alert("Error loading student bills");
       } finally {
-        setLoading(false);
+        // Only clear loading if THIS request is still the current one —
+        // otherwise a stale request's `finally` could turn off the spinner
+        // while a newer request is still in flight.
+        if (abortControllerRef.current === controller) {
+          setLoading(false);
+        }
       }
     },
     [filters, pagination.limit, pagination.page],
   );
 
   // Group bills by student
-  const groupBillsByStudent = (bills) => {
+  const groupBillsByStudent = (bills, studentSummaries = {}) => {
     if (!bills || !Array.isArray(bills) || bills.length === 0) {
       return {};
     }
 
-    return bills.reduce((acc, bill) => {
+    const grouped = bills.reduce((acc, bill) => {
       const studentId = bill.student_id;
       if (!acc[studentId]) {
         acc[studentId] = {
@@ -247,7 +411,14 @@ const StudentBills = () => {
         };
       }
 
-      acc[studentId].bills.push(bill);
+      // Attach isSelected/finalAmount straight from the backend response —
+      // no more mapping bill_ids/edited_amounts client-side per student.
+      acc[studentId].bills.push({
+        ...bill,
+        originalAmount: bill.originalAmount ?? parseFloat(bill.amount),
+        finalAmount: bill.finalAmount ?? parseFloat(bill.amount),
+        isSelected: bill.isSelected ?? true,
+      });
 
       const amount = parseFloat(bill.amount);
       if (bill.is_compulsory) {
@@ -259,139 +430,17 @@ const StudentBills = () => {
 
       return acc;
     }, {});
-  };
 
-  // Fetch student balances
-  const fetchStudentBalances = async (studentIds) => {
-    if (studentIds.length === 0) return;
-
-    try {
-      const arrearsPromises = studentIds.map((studentId) =>
-        api.get(`/getstudentarrears/${studentId}`),
-      );
-
-      const overpaymentsPromises = studentIds.map((studentId) =>
-        api.get(`/getstudentoverpayments/${studentId}`),
-      );
-
-      const [arrearsResults, overpaymentsResults] = await Promise.all([
-        Promise.all(arrearsPromises),
-        Promise.all(overpaymentsPromises),
-      ]);
-
-      const arrearsMap = {};
-      const overpaymentsMap = {};
-
-      studentIds.forEach((studentId, index) => {
-        arrearsMap[studentId] = arrearsResults[index].data?.arrears || [];
-        overpaymentsMap[studentId] =
-          overpaymentsResults[index].data?.overpayments.filter(
-            (op) => op.status === "Active",
-          ) || [];
-      });
-
-      setStudentArrears((prev) => ({ ...prev, ...arrearsMap }));
-      setStudentOverpayments((prev) => ({ ...prev, ...overpaymentsMap }));
-    } catch (error) {
-      console.error("Error fetching student balances:", error);
-    }
-  };
-
-  // Fetch student term bills
-  const fetchStudentTermBills = async (studentData) => {
-    try {
-      const studentIds = Object.keys(studentData);
-
-      if (!filters.academic_year_id || !filters.term_id) {
-        return studentData;
+    // Attach the finalized bill (already parsed by the backend) for each
+    // student, straight from the batched summaries map.
+    Object.keys(grouped).forEach((studentId) => {
+      const summary = studentSummaries[studentId];
+      if (summary?.finalized_bill) {
+        grouped[studentId].finalizedBill = summary.finalized_bill;
       }
+    });
 
-      const termBillPromises = studentIds.map(async (studentId) => {
-        try {
-          const response = await api.get(
-            `/getstudenttermbill/${studentId}?academic_year_id=${filters.academic_year_id}&term_id=${filters.term_id}`,
-          );
-
-          const termBillData = response.data;
-
-          if (
-            termBillData.selected_bills &&
-            typeof termBillData.selected_bills === "string"
-          ) {
-            try {
-              termBillData.selected_bills = JSON.parse(
-                termBillData.selected_bills,
-              );
-            } catch (parseError) {
-              console.error("Error parsing selected_bills:", parseError);
-              termBillData.selected_bills = null;
-            }
-          }
-
-          return {
-            studentId,
-            termBill: termBillData,
-            error: null,
-          };
-        } catch (error) {
-          return {
-            studentId,
-            termBill: null,
-            error: error.response?.status === 404 ? "Not Found" : error.message,
-          };
-        }
-      });
-
-      const termBillsResults = await Promise.all(termBillPromises);
-
-      const updatedStudentData = { ...studentData };
-
-      termBillsResults.forEach(({ studentId, termBill, error }) => {
-        if (updatedStudentData[studentId] && termBill) {
-          updatedStudentData[studentId].finalizedBill = termBill;
-
-          if (termBill.selected_bills) {
-            const bill_ids = termBill.selected_bills.bill_ids || [];
-            const edited_amounts = termBill.selected_bills.edited_amounts || {};
-
-            updatedStudentData[studentId].bills = updatedStudentData[
-              studentId
-            ].bills.map((bill) => {
-              const isSelected = bill_ids.includes(bill.id);
-              const finalAmount =
-                edited_amounts[bill.id] !== undefined
-                  ? edited_amounts[bill.id]
-                  : parseFloat(bill.amount);
-
-              return {
-                ...bill,
-                isSelected,
-                finalAmount,
-                originalAmount: parseFloat(bill.amount),
-              };
-            });
-          } else {
-            updatedStudentData[studentId].bills = updatedStudentData[
-              studentId
-            ].bills.map((bill) => ({
-              ...bill,
-              isSelected: true,
-              finalAmount: parseFloat(bill.amount),
-              originalAmount: parseFloat(bill.amount),
-            }));
-          }
-
-          const totals = calculateStudentTotals(updatedStudentData[studentId]);
-          updatedStudentData[studentId].totals = totals;
-          updatedStudentData[studentId].status = totals.status;
-        }
-      });
-
-      return updatedStudentData;
-    } catch (error) {
-      console.error("Error in fetchStudentTermBills:", error);
-      return studentData;
-    }
+    return grouped;
   };
 
   // Memoized filtered students with debounced search
@@ -411,7 +460,7 @@ const StudentBills = () => {
     );
   }, [studentsWithBills, debouncedSearchQuery]);
 
-  // Calculate student totals
+  // calculate student totals
   const calculateStudentTotals = useCallback(
     (studentData) => {
       try {
@@ -463,7 +512,6 @@ const StudentBills = () => {
           };
         }
 
-        // For NON-FINALIZED bills
         const compulsoryTotal = studentData.bills
           .filter((bill) => bill.is_compulsory)
           .reduce((sum, bill) => sum + (parseFloat(bill.amount) || 0), 0);
@@ -510,6 +558,7 @@ const StudentBills = () => {
   );
 
   // Pagination handlers
+
   const handlePageChange = useCallback(
     (newPage) => {
       if (newPage < 1 || newPage > pagination.totalPages) return;
@@ -792,24 +841,49 @@ const StudentBills = () => {
     setExpandedStudents({});
   };
 
-  // Memoized calculations
+  // // Memoized calculations
+  // const currentTermTotal = useMemo(() => {
+  //   return filteredStudents.reduce((sum, student) => {
+  //     const totals = calculateStudentTotals(student);
+  //     return sum + (parseFloat(student?.totals?.currentTermTotal) || 0);
+  //   }, 0);
+  // }, [filteredStudents, calculateStudentTotals]);
+
+  // const totalAmountPaid = useMemo(() => {
+  //   return filteredStudents.reduce((sum, student) => {
+  //     const totals = calculateStudentTotals(student);
+  //     return sum + (parseFloat(student?.totals?.paid) || 0);
+  //   }, 0);
+  // }, [filteredStudents, calculateStudentTotals]);
+
+  // const totalBalance = useMemo(() => {
+  //   return currentTermTotal - totalAmountPaid;
+  // }, [currentTermTotal, totalAmountPaid]);
+
   const currentTermTotal = useMemo(() => {
     return filteredStudents.reduce((sum, student) => {
       const totals = calculateStudentTotals(student);
-      return sum + (parseFloat(student?.totals?.currentTermTotal) || 0);
+      if (!totals.isFinalized) return sum;
+      return sum + (parseFloat(totals.currentTermTotal) || 0);
     }, 0);
   }, [filteredStudents, calculateStudentTotals]);
 
   const totalAmountPaid = useMemo(() => {
     return filteredStudents.reduce((sum, student) => {
       const totals = calculateStudentTotals(student);
-      return sum + (parseFloat(student?.totals?.paid) || 0);
+      if (!totals.isFinalized) return sum;
+      return sum + (parseFloat(totals.paid) || 0);
     }, 0);
   }, [filteredStudents, calculateStudentTotals]);
 
   const totalBalance = useMemo(() => {
     return currentTermTotal - totalAmountPaid;
   }, [currentTermTotal, totalAmountPaid]);
+
+  const finalizedStudentCount = useMemo(() => {
+    return filteredStudents.filter((s) => calculateStudentTotals(s).isFinalized)
+      .length;
+  }, [filteredStudents, calculateStudentTotals]);
 
   const selectedYear = getSelectedAcademicYear();
   const selectedTermDetails = getSelectedTerm();
@@ -894,134 +968,7 @@ const StudentBills = () => {
           </button>
         </div>
       </div>
-      {/* Delete Section */}
-      {/* {showDeleteSection && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg overflow-hidden">
-          <div className="flex justify-between items-center p-4 bg-red-100">
-            <div className="flex items-center">
-              <ExclamationTriangleIcon className="w-5 h-5 text-red-600 mr-2" />
-              <h3 className="text-lg font-semibold text-red-800">
-                Database Delete Tools
-              </h3>
-            </div>
-            <div className="flex items-center space-x-2">
-              {autoHideTimer && (
-                <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
-                  Auto-hides in{" "}
-                  {Math.ceil(
-                    (30000 -
-                      (Date.now() -
-                        (autoHideTimer?._idleStart || Date.now()))) /
-                      1000,
-                  )}
-                  s
-                </span>
-              )}
-              <button
-                onClick={() => setShowDeleteSection(false)}
-                className="text-red-600 hover:text-red-800 p-1"
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
 
-          <div className="p-4">
-            <div className="mb-4">
-              <p className="text-red-700 mb-2">
-                <strong>⚠️ WARNING:</strong> These actions are cautious and
-                should only be used when starting a new term.
-              </p>
-              <div className="text-sm text-red-600">
-                <p>• Use only when transitioning to a new academic term</p>
-                <p>• Ensure all payments have been processed</p>
-                <p>• Backup data before proceeding</p>
-              </div>
-            </div>
-
-            <div className="flex space-x-4">
-              <button
-                onClick={handleDeleteAllArrears}
-                disabled={deletingArrears || arrearsDeleted}
-                className="flex-1 flex items-center justify-center space-x-2 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <TrashIcon className="w-5 h-5" />
-                <div className="text-left">
-                  <div className="font-medium">
-                    {deletingArrears
-                      ? "Deleting..."
-                      : arrearsDeleted
-                        ? "Arrears Deleted"
-                        : "Delete All Arrears"}
-                  </div>
-                  <div className="text-xs opacity-80">
-                    Clears all outstanding balances
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={handleDeleteAllOverpayments}
-                disabled={deletingOverpayments || overpaymentsDeleted}
-                className="flex-1 flex items-center justify-center space-x-2 bg-orange-600 text-white px-4 py-3 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <TrashIcon className="w-5 h-5" />
-                <div className="text-left">
-                  <div className="font-medium">
-                    {deletingOverpayments
-                      ? "Deleting..."
-                      : overpaymentsDeleted
-                        ? "Overpayments Deleted"
-                        : "Delete All Overpayments"}
-                  </div>
-                  <div className="text-xs opacity-80">
-                    Clears all credit balances
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            <div className="mt-3 flex justify-between text-sm">
-              <div
-                className={`flex items-center ${
-                  arrearsDeleted ? "text-green-600" : "text-gray-500"
-                }`}
-              >
-                <div
-                  className={`w-2 h-2 rounded-full mr-2 ${
-                    arrearsDeleted ? "bg-green-500" : "bg-gray-300"
-                  }`}
-                ></div>
-                Arrears: {arrearsDeleted ? "Cleared" : "Pending"}
-              </div>
-              <div
-                className={`flex items-center ${
-                  overpaymentsDeleted ? "text-green-600" : "text-gray-500"
-                }`}
-              >
-                <div
-                  className={`w-2 h-2 rounded-full mr-2 ${
-                    overpaymentsDeleted ? "bg-green-500" : "bg-gray-300"
-                  }`}
-                ></div>
-                Overpayments: {overpaymentsDeleted ? "Cleared" : "Pending"}
-              </div>
-            </div>
-          </div>
-
-          <div className="px-4 pb-4">
-            <div className="text-xs text-red-500 text-center border-t border-red-200 pt-3">
-              This section will automatically close in{" "}
-              {Math.ceil(
-                (30000 -
-                  (Date.now() - (autoHideTimer?._idleStart || Date.now()))) /
-                  1000,
-              )}{" "}
-              seconds
-            </div>
-          </div>
-        </div>
-      )} */}
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow border mb-6">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -1153,10 +1100,26 @@ const StudentBills = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">
-                Students with Bills
+                Students Total
               </p>
               <p className="text-2xl font-bold text-gray-900">
                 {filteredStudents.length}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow border p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <UserIcon className="w-8 h-8 text-blue-500" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">
+                Students with finalized bills
+              </p>
+              <p className="text-2xl font-bold text-gray-900">
+                {finalizedStudentCount}
               </p>
             </div>
           </div>
@@ -1456,19 +1419,19 @@ const StudentCardHeader = React.memo(
             </div>
             <p className="text-sm text-gray-500">
               {studentData.student.admission_number} •{" "}
-              {/* {studentData.student.class_name} */}
+              {studentData.student.class_name}
             </p>
           </div>
 
           <div className="flex items-center space-x-2">
-            {getStatusIcon(studentData.status)}
+            {getStatusIcon(totals.status)}
             <span
               className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                studentData.status,
+                totals.status,
               )}`}
             >
-              {studentData.status}
-              {studentData.status === "Paid" && (
+              {totals.status}
+              {totals.status === "Paid" && (
                 <CheckIcon className="w-4 h-4 ml-1" />
               )}
             </span>
@@ -1580,6 +1543,7 @@ const StudentCardDetails = React.memo(
         />
         <StudentCardActions
           studentData={studentData}
+          totals={totals}
           hasFinalizedBill={hasFinalizedBill}
           handlePreviewBill={handlePreviewBill}
           handleReceivePayment={handleReceivePayment}
@@ -1803,6 +1767,7 @@ const IndividualBillsTable = React.memo(({ studentData, hasFinalizedBill }) => {
 const StudentCardActions = React.memo(
   ({
     studentData,
+    totals,
     hasFinalizedBill,
     handlePreviewBill,
     handleReceivePayment,
@@ -1825,7 +1790,7 @@ const StudentCardActions = React.memo(
             <EyeIcon className="w-4 h-4" />
             <span>Preview Bill</span>
           </button>
-          {studentData.status !== "Paid" && (
+          {totals.status !== "Paid" && (
             <button
               onClick={() => handleReceivePayment(studentData)}
               className="flex items-center space-x-2 bg-emerald-500 text-white px-4 py-2 rounded-md hover:bg-emerald-600 transition-colors"

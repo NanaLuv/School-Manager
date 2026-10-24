@@ -144,38 +144,134 @@ const getSubjects = async (req, res) => {
 };
 
 // POST /api/subjects - Create new subject
+// const createNewSubject = async (req, res) => {
+//   try {
+//     const { subject_code, subject_name, description } = req.body;
+
+//     // Check if subject code already exists
+//     const [existing] = await pool.query(
+//       "SELECT id FROM subjects WHERE subject_code = ?",
+//       [subject_code],
+//     );
+
+//     if (existing.length > 0) {
+//       return res.status(400).json({ error: "Subject code already exists" });
+//     }
+
+//     // Insert new subject
+//     const [result] = await pool.query(
+//       "INSERT INTO subjects (subject_code, subject_name, description) VALUES (?, ?, ?)",
+//       [subject_code, subject_name, description],
+//     );
+//     clearRelevantCaches("UPDATE_SUBJECT");
+
+//     // Return the created subject
+//     const [newSubject] = await pool.query(
+//       "SELECT * FROM subjects WHERE id = ?",
+//       [result.insertId],
+//     );
+
+//     res.status(201).json(newSubject[0]);
+//   } catch (error) {
+//     clearRelevantCaches("UPDATE_SUBJECT");
+//     console.error("Error creating subject:", error);
+//     res.status(500).json({ error: "Failed to create subject" });
+//   }
+// };
+
 const createNewSubject = async (req, res) => {
+  const connection = await pool.getConnection();
+
   try {
-    const { subject_code, subject_name, description } = req.body;
+    await connection.beginTransaction();
 
-    // Check if subject code already exists
-    const [existing] = await pool.query(
-      "SELECT id FROM subjects WHERE subject_code = ?",
-      [subject_code],
-    );
+    const {
+      subject_code: providedSubjectCode,
+      subject_name,
+      description,
+    } = req.body;
 
-    if (existing.length > 0) {
-      return res.status(400).json({ error: "Subject code already exists" });
+    // ------------------------------------------------------------------------
+    // 1. Resolve subject_code:
+    //    - If client sent one → validate uniqueness.
+    //    - If not → build "<3-letter-prefix><3-digit-seq>" from subject_name.
+    //      e.g. "Mathematics" → MAT001, "English" → ENG001
+    //      The sequence is global per prefix (MAT001, MAT002, ...) with no year.
+    // ------------------------------------------------------------------------
+    let subject_code = (providedSubjectCode || "").trim().toUpperCase();
+
+    if (subject_code) {
+      const [existing] = await connection.query(
+        "SELECT id FROM subjects WHERE subject_code = ?",
+        [subject_code],
+      );
+
+      if (existing.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ error: "Subject code already exists" });
+      }
+    } else {
+      // Build the 3-letter prefix from the subject name.
+      // Strip anything that isn't a letter, uppercase, then take first 3.
+      const cleaned = (subject_name || "").toUpperCase().replace(/[^A-Z]/g, "");
+      let prefix = cleaned.slice(0, 3);
+
+      // Fallback if the name has fewer than 3 letters (rare, but safe).
+      if (prefix.length < 3) {
+        prefix = (prefix + "SUB").slice(0, 3);
+      }
+
+      // Find the highest existing sequence for this prefix.
+      // LIKE '<prefix>___' matches prefix + exactly 3 digits.
+      const [rows] = await connection.query(
+        `SELECT subject_code
+           FROM subjects
+          WHERE subject_code LIKE ?
+          ORDER BY subject_code DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [`${prefix}%`],
+      );
+
+      let nextSeq = 1;
+      if (rows.length > 0) {
+        // Extract the trailing digits from the last code (e.g. "MAT007" → 7)
+        const lastCode = rows[0].subject_code;
+        const match = lastCode.match(/(\d+)$/);
+        if (match) {
+          const lastSeq = parseInt(match[1], 10);
+          if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+        }
+      }
+
+      subject_code = `${prefix}${String(nextSeq).padStart(3, "0")}`;
     }
 
-    // Insert new subject
-    const [result] = await pool.query(
+    // ------------------------------------------------------------------------
+    // 2. Insert subject
+    // ------------------------------------------------------------------------
+    const [result] = await connection.query(
       "INSERT INTO subjects (subject_code, subject_name, description) VALUES (?, ?, ?)",
       [subject_code, subject_name, description],
     );
+
+    await connection.commit();
+
     clearRelevantCaches("UPDATE_SUBJECT");
 
-    // Return the created subject
-    const [newSubject] = await pool.query(
+    const [newSubject] = await connection.query(
       "SELECT * FROM subjects WHERE id = ?",
       [result.insertId],
     );
 
     res.status(201).json(newSubject[0]);
   } catch (error) {
+    await connection.rollback();
     clearRelevantCaches("UPDATE_SUBJECT");
     console.error("Error creating subject:", error);
     res.status(500).json({ error: "Failed to create subject" });
+  } finally {
+    connection.release();
   }
 };
 
@@ -256,9 +352,13 @@ const getTeachers = async (req, res) => {
 
 // POST /api/teachers - Create new teacher
 const createTeacher = async (req, res) => {
+  const connection = await pool.getConnection();
+
   try {
+    await connection.beginTransaction();
+
     const {
-      employee_id,
+      employee_id: providedEmployeeId,
       first_name,
       last_name,
       contact_info,
@@ -266,8 +366,55 @@ const createTeacher = async (req, res) => {
       hire_date,
     } = req.body;
 
-    const [result] = await pool.query(
-      "INSERT INTO teachers (employee_id, first_name, last_name, contact_info, specialization, hire_date) VALUES (?, ?, ?, ?, ?, ?)",
+    // ------------------------------------------------------------------------
+    // 1. Resolve employee_id:
+    //    - If the client sent one → validate uniqueness.
+    //    - If not → generate the next sequential one for the current year.
+    //    FOR UPDATE prevents two concurrent inserts from grabbing the same ID.
+    // ------------------------------------------------------------------------
+    let employee_id = (providedEmployeeId || "").trim();
+
+    if (employee_id) {
+      const [existing] = await connection.query(
+        "SELECT id FROM teachers WHERE employee_id = ?",
+        [employee_id],
+      );
+
+      if (existing.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ error: "Employee ID already exists" });
+      }
+    } else {
+      const year = new Date().getFullYear();
+      const prefix = `EMP-${year}-`;
+
+      const [rows] = await connection.query(
+        `SELECT employee_id
+           FROM teachers
+          WHERE employee_id LIKE ?
+          ORDER BY employee_id DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [`${prefix}%`],
+      );
+
+      let nextSeq = 1;
+      if (rows.length > 0) {
+        const lastSeqStr = rows[0].employee_id.slice(prefix.length);
+        const lastSeq = parseInt(lastSeqStr, 10);
+        if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+      }
+
+      employee_id = `${prefix}${String(nextSeq).padStart(4, "0")}`;
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Insert teacher
+    // ------------------------------------------------------------------------
+    const [result] = await connection.query(
+      `INSERT INTO teachers 
+        (employee_id, first_name, last_name, contact_info, specialization, hire_date) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         employee_id,
         first_name,
@@ -277,17 +424,23 @@ const createTeacher = async (req, res) => {
         hire_date,
       ],
     );
+
+    await connection.commit();
+
     clearRelevantCaches("UPDATE_TEACHER");
 
-    const [newTeacher] = await pool.query(
+    const [newTeacher] = await connection.query(
       "SELECT * FROM teachers WHERE id = ?",
       [result.insertId],
     );
     res.status(201).json(newTeacher[0]);
   } catch (error) {
+    await connection.rollback();
     clearRelevantCaches("UPDATE_TEACHER");
     console.error("Error creating teacher:", error);
     res.status(500).json({ error: "Failed to create teacher" });
+  } finally {
+    connection.release();
   }
 };
 
@@ -1940,6 +2093,173 @@ const createClassAssignment = async (req, res) => {
 };
 
 // POST /api/class-assignments/bulk - Create multiple class assignments at once
+// const createBulkClassAssignments = async (req, res) => {
+//   const connection = await pool.getConnection();
+
+//   try {
+//     await connection.beginTransaction();
+
+//     const {
+//       student_ids,
+//       class_id,
+//       academic_year_id,
+//       promotion_status = "Pending",
+//     } = req.body;
+
+//     // Validate required fields
+//     if (
+//       !student_ids ||
+//       !Array.isArray(student_ids) ||
+//       student_ids.length === 0
+//     ) {
+//       await connection.rollback();
+//       return res.status(400).json({
+//         error: "Student IDs array is required and must not be empty",
+//       });
+//     }
+
+//     if (!class_id || !academic_year_id) {
+//       await connection.rollback();
+//       return res.status(400).json({
+//         error: "Class ID and Academic Year ID are required",
+//       });
+//     }
+
+//     // Validate academic year exists
+//     const [yearCheck] = await connection.query(
+//       "SELECT id, year_label FROM academic_years WHERE id = ?",
+//       [academic_year_id],
+//     );
+
+//     if (yearCheck.length === 0) {
+//       await connection.rollback();
+//       return res.status(400).json({
+//         error: "Selected academic year does not exist",
+//       });
+//     }
+
+//     // Validate class exists and check capacity
+//     const [classInfo] = await connection.query(
+//       "SELECT capacity, class_name FROM classes WHERE id = ?",
+//       [class_id],
+//     );
+
+//     if (classInfo.length === 0) {
+//       await connection.rollback();
+//       return res.status(400).json({
+//         error: "Selected class does not exist",
+//       });
+//     }
+
+//     const className = classInfo[0].class_name;
+//     const classCapacity = classInfo[0].capacity;
+
+//     // Check current enrollment for this class and academic year
+//     const [currentEnrollment] = await connection.query(
+//       "SELECT COUNT(*) as count FROM class_assignments WHERE class_id = ? AND academic_year_id = ?",
+//       [class_id, academic_year_id],
+//     );
+
+//     const currentCount = currentEnrollment[0].count;
+
+//     // Check capacity
+//     if (classCapacity && currentCount + student_ids.length > classCapacity) {
+//       await connection.rollback();
+//       return res.status(400).json({
+//         error: `Class ${className} has ${currentCount}/${classCapacity} students. Adding ${student_ids.length} more would exceed capacity.`,
+//         capacity: classCapacity,
+//         current: currentCount,
+//         attempted: student_ids.length,
+//       });
+//     }
+
+//     const results = {
+//       success: 0,
+//       errors: [],
+//       skipped: 0,
+//       created: 0,
+//     };
+
+//     // Process each student
+//     for (const studentId of student_ids) {
+//       try {
+//         // Check if student exists and is active
+//         const [studentCheck] = await connection.query(
+//           "SELECT id, first_name, last_name, admission_number FROM students WHERE id = ? AND (is_active IS NULL OR is_active = TRUE)",
+//           [studentId],
+//         );
+
+//         if (studentCheck.length === 0) {
+//           results.errors.push({
+//             student_id: studentId,
+//             error: "Student not found or inactive",
+//           });
+//           continue;
+//         }
+
+//         const student = studentCheck[0];
+
+//         // Check if student already has a class assignment for this academic year
+//         const [existingAssignment] = await connection.query(
+//           `SELECT ca.id, c.class_name, ay.year_label 
+//            FROM class_assignments ca
+//            LEFT JOIN classes c ON ca.class_id = c.id
+//            LEFT JOIN academic_years ay ON ca.academic_year_id = ay.id
+//            WHERE ca.student_id = ? AND ca.academic_year_id = ?`,
+//           [studentId, academic_year_id],
+//         );
+
+//         if (existingAssignment.length > 0) {
+//           const existing = existingAssignment[0];
+//           results.skipped++;
+//           results.errors.push({
+//             student_id: studentId,
+//             student_name: `${student.first_name} ${student.last_name}`,
+//             error: `Already enrolled in ${existing.class_name} for ${existing.year_label}`,
+//           });
+//           continue;
+//         }
+
+//         // Create the assignment
+//         await connection.query(
+//           "INSERT INTO class_assignments (student_id, class_id, academic_year_id, promotion_status, date_assigned) VALUES (?, ?, ?, ?, CURDATE())",
+//           [studentId, class_id, academic_year_id, promotion_status],
+//         );
+
+//         results.success++;
+//         results.created++;
+//       } catch (error) {
+//         results.errors.push({
+//           student_id: studentId,
+//           error: error.message,
+//         });
+//       }
+//     }
+
+//     await connection.commit();
+
+//     res.status(201).json({
+//       message: `Bulk enrollment completed. ${results.created} students enrolled, ${results.skipped} skipped.`,
+//       ...results,
+//       summary: {
+//         total_students: student_ids.length,
+//         successfully_enrolled: results.created,
+//         skipped: results.skipped,
+//         errors_count: results.errors.length - results.skipped, // Exclude skipped from error count
+//       },
+//     });
+//   } catch (error) {
+//     await connection.rollback();
+//     console.error("Error creating bulk class assignments:", error);
+//     res.status(500).json({
+//       error: "Failed to create bulk class assignments",
+//       details: error.message,
+//     });
+//   } finally {
+//     connection.release();
+//   }
+// };
+
 const createBulkClassAssignments = async (req, res) => {
   const connection = await pool.getConnection();
 
@@ -1953,7 +2273,6 @@ const createBulkClassAssignments = async (req, res) => {
       promotion_status = "Pending",
     } = req.body;
 
-    // Validate required fields
     if (
       !student_ids ||
       !Array.isArray(student_ids) ||
@@ -1972,12 +2291,10 @@ const createBulkClassAssignments = async (req, res) => {
       });
     }
 
-    // Validate academic year exists
     const [yearCheck] = await connection.query(
       "SELECT id, year_label FROM academic_years WHERE id = ?",
       [academic_year_id],
     );
-
     if (yearCheck.length === 0) {
       await connection.rollback();
       return res.status(400).json({
@@ -1985,12 +2302,10 @@ const createBulkClassAssignments = async (req, res) => {
       });
     }
 
-    // Validate class exists and check capacity
     const [classInfo] = await connection.query(
       "SELECT capacity, class_name FROM classes WHERE id = ?",
       [class_id],
     );
-
     if (classInfo.length === 0) {
       await connection.rollback();
       return res.status(400).json({
@@ -2001,15 +2316,12 @@ const createBulkClassAssignments = async (req, res) => {
     const className = classInfo[0].class_name;
     const classCapacity = classInfo[0].capacity;
 
-    // Check current enrollment for this class and academic year
     const [currentEnrollment] = await connection.query(
       "SELECT COUNT(*) as count FROM class_assignments WHERE class_id = ? AND academic_year_id = ?",
       [class_id, academic_year_id],
     );
-
     const currentCount = currentEnrollment[0].count;
 
-    // Check capacity
     if (classCapacity && currentCount + student_ids.length > classCapacity) {
       await connection.rollback();
       return res.status(400).json({
@@ -2027,15 +2339,12 @@ const createBulkClassAssignments = async (req, res) => {
       created: 0,
     };
 
-    // Process each student
     for (const studentId of student_ids) {
       try {
-        // Check if student exists and is active
         const [studentCheck] = await connection.query(
           "SELECT id, first_name, last_name, admission_number FROM students WHERE id = ? AND (is_active IS NULL OR is_active = TRUE)",
           [studentId],
         );
-
         if (studentCheck.length === 0) {
           results.errors.push({
             student_id: studentId,
@@ -2043,16 +2352,17 @@ const createBulkClassAssignments = async (req, res) => {
           });
           continue;
         }
-
         const student = studentCheck[0];
 
-        // Check if student already has a class assignment for this academic year
+        // Check whether the student is already in the TARGET class for the
+        // target year (this replaces the old "already enrolled" rule for the
+        // same year, but still allows promotion from a different class).
         const [existingAssignment] = await connection.query(
           `SELECT ca.id, c.class_name, ay.year_label 
-           FROM class_assignments ca
-           LEFT JOIN classes c ON ca.class_id = c.id
-           LEFT JOIN academic_years ay ON ca.academic_year_id = ay.id
-           WHERE ca.student_id = ? AND ca.academic_year_id = ?`,
+             FROM class_assignments ca
+             LEFT JOIN classes c ON ca.class_id = c.id
+             LEFT JOIN academic_years ay ON ca.academic_year_id = ay.id
+            WHERE ca.student_id = ? AND ca.academic_year_id = ?`,
           [studentId, academic_year_id],
         );
 
@@ -2067,7 +2377,6 @@ const createBulkClassAssignments = async (req, res) => {
           continue;
         }
 
-        // Create the assignment
         await connection.query(
           "INSERT INTO class_assignments (student_id, class_id, academic_year_id, promotion_status, date_assigned) VALUES (?, ?, ?, ?, CURDATE())",
           [studentId, class_id, academic_year_id, promotion_status],
@@ -2092,7 +2401,7 @@ const createBulkClassAssignments = async (req, res) => {
         total_students: student_ids.length,
         successfully_enrolled: results.created,
         skipped: results.skipped,
-        errors_count: results.errors.length - results.skipped, // Exclude skipped from error count
+        errors_count: results.errors.length - results.skipped,
       },
     });
   } catch (error) {
@@ -2327,6 +2636,144 @@ const deleteClassAssignment = async (req, res) => {
 };
 
 // GET /api/students - Get students with optional includeInactive parameter
+// const getStudents = async (req, res) => {
+//   try {
+//     const {
+//       includeInactive,
+//       page = 1,
+//       limit = 20,
+//       search = "",
+//       class_id,
+//       status,
+//     } = req.query;
+
+//     const pageNum = parseInt(page);
+//     const limitNum = parseInt(limit);
+//     const offset = (pageNum - 1) * limitNum;
+
+//     let whereClause = "WHERE (s.is_active IS NULL OR s.is_active = TRUE)";
+//     let whereParams = [];
+//     let orderClause = `
+//       ORDER BY 
+//         c.class_name IS NULL, 
+//         c.class_name, 
+//         s.first_name, 
+//         s.last_name
+//     `;
+
+//     // If includeInactive is explicitly true, show all students
+//     if (includeInactive === "true") {
+//       whereClause = ""; // No filter, get all students
+//       orderClause = `
+//         ORDER BY 
+//           s.is_active DESC,
+//           c.class_name IS NULL, 
+//           c.class_name, 
+//           s.first_name, 
+//           s.last_name
+//       `;
+//     }
+
+//     // Add search filter if provided
+//     if (search) {
+//       const searchCondition = whereClause ? "AND" : "WHERE";
+//       whereClause += whereClause ? ` ${searchCondition} ` : "WHERE ";
+//       whereClause += `(
+//         s.first_name LIKE ? OR 
+//         s.last_name LIKE ? OR 
+//         s.admission_number LIKE ? OR
+//         s.parent_name LIKE ?
+//       )`;
+//       whereParams.push(
+//         `%${search}%`,
+//         `%${search}%`,
+//         `%${search}%`,
+//         `%${search}%`,
+//       );
+//     }
+
+//     // Add class filter if provided
+//     if (class_id) {
+//       const classCondition = whereClause ? "AND" : "WHERE";
+//       whereClause += whereClause ? ` ${classCondition} ` : "WHERE ";
+//       whereClause += `c.id = ?`;
+//       whereParams.push(class_id);
+//     }
+
+//     // Add status filter
+//     if (status) {
+//       const statusCondition = whereClause ? "AND" : "WHERE";
+//       whereClause += whereClause ? ` ${statusCondition} ` : "WHERE ";
+//       if (status === "active") {
+//         whereClause += `(s.is_active IS NULL OR s.is_active = TRUE)`;
+//       } else if (status === "inactive") {
+//         whereClause += `s.is_active = FALSE`;
+//       } else if (status === "fee_block") {
+//         whereClause += `s.has_fee_block = TRUE`;
+//       }
+//     }
+
+//     // Get total count first
+//     const [countResult] = await pool.query(
+//       `
+//       SELECT COUNT(*) as total
+//       FROM students s
+//       LEFT JOIN class_assignments ca ON s.id = ca.student_id 
+//         AND ca.academic_year_id = (SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1)
+//       LEFT JOIN classes c ON ca.class_id = c.id
+//       LEFT JOIN academic_years ay ON ca.academic_year_id = ay.id
+//       ${whereClause}
+//     `,
+//       whereParams,
+//     );
+
+//     const total = countResult[0].total;
+//     const totalPages = Math.ceil(total / limitNum);
+
+//     // Get paginated data
+//     whereParams.push(limitNum, offset);
+//     const [students] = await pool.query(
+//       `
+//       SELECT 
+//         s.*, 
+//         ca.class_id, 
+//         c.class_name,
+//         c.room_number,
+//         ca.academic_year_id,
+//         ay.year_label as academic_year,
+//         ca.promotion_status,
+//         ca.date_assigned as class_assignment_date
+//       FROM students s
+//       LEFT JOIN class_assignments ca ON s.id = ca.student_id 
+//         AND ca.academic_year_id = (SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1)
+//       LEFT JOIN classes c ON ca.class_id = c.id
+//       LEFT JOIN academic_years ay ON ca.academic_year_id = ay.id
+//       ${whereClause}
+//       ${orderClause}
+//       LIMIT ? OFFSET ?
+//     `,
+//       whereParams,
+//     );
+
+//     res.json({
+//       students,
+//       pagination: {
+//         page: pageNum,
+//         limit: limitNum,
+//         total,
+//         totalPages,
+//         hasNextPage: pageNum < totalPages,
+//         hasPrevPage: pageNum > 1,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error fetching students:", error);
+//     res.status(500).json({ error: "Failed to fetch students" });
+//   }
+// };
+
+// getting students for arrears management
+
 const getStudents = async (req, res) => {
   try {
     const {
@@ -2352,9 +2799,8 @@ const getStudents = async (req, res) => {
         s.last_name
     `;
 
-    // If includeInactive is explicitly true, show all students
     if (includeInactive === "true") {
-      whereClause = ""; // No filter, get all students
+      whereClause = "";
       orderClause = `
         ORDER BY 
           s.is_active DESC,
@@ -2365,7 +2811,6 @@ const getStudents = async (req, res) => {
       `;
     }
 
-    // Add search filter if provided
     if (search) {
       const searchCondition = whereClause ? "AND" : "WHERE";
       whereClause += whereClause ? ` ${searchCondition} ` : "WHERE ";
@@ -2383,7 +2828,6 @@ const getStudents = async (req, res) => {
       );
     }
 
-    // Add class filter if provided
     if (class_id) {
       const classCondition = whereClause ? "AND" : "WHERE";
       whereClause += whereClause ? ` ${classCondition} ` : "WHERE ";
@@ -2391,7 +2835,6 @@ const getStudents = async (req, res) => {
       whereParams.push(class_id);
     }
 
-    // Add status filter
     if (status) {
       const statusCondition = whereClause ? "AND" : "WHERE";
       whereClause += whereClause ? ` ${statusCondition} ` : "WHERE ";
@@ -2404,7 +2847,7 @@ const getStudents = async (req, res) => {
       }
     }
 
-    // Get total count first
+    // --- Count query (unchanged) ---
     const [countResult] = await pool.query(
       `
       SELECT COUNT(*) as total
@@ -2421,7 +2864,7 @@ const getStudents = async (req, res) => {
     const total = countResult[0].total;
     const totalPages = Math.ceil(total / limitNum);
 
-    // Get paginated data
+    // --- Main students query (unchanged shape, still current-year join) ---
     whereParams.push(limitNum, offset);
     const [students] = await pool.query(
       `
@@ -2446,8 +2889,61 @@ const getStudents = async (req, res) => {
       whereParams,
     );
 
+    // ------------------------------------------------------------------------
+    // NEW: fetch ALL academic-year assignments for the students we just loaded
+    // so the frontend can look up each student's class for any year.
+    // ------------------------------------------------------------------------
+    let studentsWithHistory = students;
+
+    if (students.length > 0) {
+      const studentIds = students.map((s) => s.id);
+      const placeholders = studentIds.map(() => "?").join(",");
+
+      const [assignments] = await pool.query(
+        `
+        SELECT 
+          ca.student_id,
+          ca.class_id,
+          c.class_name,
+          c.room_number,
+          ca.academic_year_id,
+          ay.year_label,
+          ay.is_current,
+          ca.promotion_status,
+          ca.date_assigned
+        FROM class_assignments ca
+        LEFT JOIN classes c        ON c.id  = ca.class_id
+        LEFT JOIN academic_years ay ON ay.id = ca.academic_year_id
+        WHERE ca.student_id IN (${placeholders})
+        ORDER BY ay.is_current DESC, ay.year_label DESC
+      `,
+        studentIds,
+      );
+
+      // Group by student_id
+      const byStudent = new Map();
+      for (const a of assignments) {
+        if (!byStudent.has(a.student_id)) byStudent.set(a.student_id, []);
+        byStudent.get(a.student_id).push({
+          class_id: a.class_id,
+          class_name: a.class_name,
+          room_number: a.room_number,
+          academic_year_id: a.academic_year_id,
+          year_label: a.year_label,
+          is_current: a.is_current,
+          promotion_status: a.promotion_status,
+          date_assigned: a.date_assigned,
+        });
+      }
+
+      studentsWithHistory = students.map((s) => ({
+        ...s,
+        assignments: byStudent.get(s.id) || [],
+      }));
+    }
+
     res.json({
-      students,
+      students: studentsWithHistory,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -2463,7 +2959,6 @@ const getStudents = async (req, res) => {
   }
 };
 
-// getting students for arrears management
 const getAllStudentsForArrears = async (req, res) => {
   try {
     const { class_id, includeInactive = "true" } = req.query;
@@ -2521,6 +3016,129 @@ const getAllStudentsForArrears = async (req, res) => {
 
 // POST /api/students - Create new student with photo
 // createStudent function to handle class assignment
+// const createStudent = async (req, res) => {
+//   const connection = await pool.getConnection();
+
+//   try {
+//     await connection.beginTransaction();
+
+//     const {
+//       admission_number,
+//       first_name,
+//       last_name,
+//       date_of_birth,
+//       gender,
+//       parent_name,
+//       parent_contact,
+//       parent_email,
+//       address,
+//       enrolled_date,
+//       has_fee_block,
+//       is_active,
+//       class_id, // Add class_id to the request
+//     } = req.body;
+
+//     // Check if admission number already exists
+//     const [existing] = await connection.query(
+//       "SELECT id FROM students WHERE admission_number = ? AND (is_active IS NULL OR is_active = TRUE)",
+//       [admission_number],
+//     );
+
+//     if (existing.length > 0) {
+//       if (req.file) {
+//         fs.unlinkSync(req.file.path);
+//       }
+//       await connection.rollback();
+//       return res.status(400).json({ error: "Admission number already exists" });
+//     }
+
+//     let photo_filename = null;
+//     if (req.file) {
+//       photo_filename = req.file.filename;
+//     }
+
+//     // Convert string booleans to actual booleans
+//     const feeBlockBoolean = has_fee_block === "true" || has_fee_block === true;
+//     const isActiveBoolean = is_active !== "false";
+
+//     // Insert student
+//     const [studentResult] = await connection.query(
+//       `INSERT INTO students 
+//        (admission_number, first_name, last_name, date_of_birth, gender, parent_name, parent_contact, parent_email, address, enrolled_date, has_fee_block, is_active, photo_filename) 
+//        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?)`,
+//       [
+//         admission_number,
+//         first_name,
+//         last_name,
+//         date_of_birth,
+//         gender,
+//         parent_name,
+//         parent_contact,
+//         parent_email,
+//         address,
+//         enrolled_date,
+//         feeBlockBoolean,
+//         isActiveBoolean,
+//         photo_filename,
+//       ],
+//     );
+
+//     const studentId = studentResult.insertId;
+
+//     // If class_id is provided, assign student to class for current academic year
+//     if (class_id) {
+//       // Get current academic year
+//       const [currentYear] = await connection.query(
+//         "SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1",
+//       );
+
+//       if (currentYear.length > 0) {
+//         const academicYearId = currentYear[0].id;
+
+//         await connection.query(
+//           `INSERT INTO class_assignments 
+//            (student_id, class_id, academic_year_id, promotion_status) 
+//            VALUES (?, ?, ?, 'Pending')`,
+//           [studentId, class_id, academicYearId],
+//         );
+//       }
+//     }
+
+//     await connection.commit();
+
+//     clearRelevantCaches("UPDATE_STUDENT");
+
+//     // Return the created student with class info
+//     const [newStudent] = await connection.query(
+//       `
+//       SELECT s.*, 
+//              ca.class_id, 
+//              c.class_name,
+//              ca.academic_year_id,
+//              ca.promotion_status
+//       FROM students s
+//       LEFT JOIN class_assignments ca ON s.id = ca.student_id 
+//         AND ca.academic_year_id = (SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1)
+//       LEFT JOIN classes c ON ca.class_id = c.id
+//       WHERE s.id = ?
+//     `,
+//       [studentId],
+//     );
+
+//     res.status(201).json(newStudent[0]);
+//   } catch (error) {
+//     await connection.rollback();
+//     // Delete uploaded file if error occurs
+//     if (req.file) {
+//       fs.unlinkSync(req.file.path);
+//     }
+//     console.error("Error creating student:", error);
+//     res.status(500).json({ error: "Failed to create student" });
+//   } finally {
+//     connection.release();
+//   }
+// };
+
 const createStudent = async (req, res) => {
   const connection = await pool.getConnection();
 
@@ -2528,7 +3146,7 @@ const createStudent = async (req, res) => {
     await connection.beginTransaction();
 
     const {
-      admission_number,
+      admission_number: providedAdmissionNumber,
       first_name,
       last_name,
       date_of_birth,
@@ -2540,37 +3158,79 @@ const createStudent = async (req, res) => {
       enrolled_date,
       has_fee_block,
       is_active,
-      class_id, // Add class_id to the request
+      class_id,
     } = req.body;
 
-    // Check if admission number already exists
-    const [existing] = await connection.query(
-      "SELECT id FROM students WHERE admission_number = ? AND (is_active IS NULL OR is_active = TRUE)",
-      [admission_number],
-    );
+    // ------------------------------------------------------------------------
+    // 1. Resolve the admission number:
+    //    - If the client sent one → validate uniqueness.
+    //    - If not → generate the next sequential one for the current year.
+    //    Locking the row with FOR UPDATE prevents two concurrent inserts from
+    //    grabbing the same number.
+    // ------------------------------------------------------------------------
+    let admission_number = (providedAdmissionNumber || "").trim();
 
-    if (existing.length > 0) {
-      if (req.file) {
-        fs.unlinkSync(req.file.path);
+    if (admission_number) {
+      const [existing] = await connection.query(
+        "SELECT id FROM students WHERE admission_number = ? AND (is_active IS NULL OR is_active = TRUE)",
+        [admission_number],
+      );
+
+      if (existing.length > 0) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        await connection.rollback();
+        return res
+          .status(400)
+          .json({ error: "Admission number already exists" });
       }
-      await connection.rollback();
-      return res.status(400).json({ error: "Admission number already exists" });
+    } else {
+      const year = new Date().getFullYear();
+      const prefix = `ADM-${year}-`;
+
+      // Grab the highest existing number for this year, lock the row.
+      const [rows] = await connection.query(
+        `SELECT admission_number
+           FROM students
+          WHERE admission_number LIKE ?
+          ORDER BY admission_number DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [`${prefix}%`],
+      );
+
+      let nextSeq = 1;
+      if (rows.length > 0) {
+        const lastSeqStr = rows[0].admission_number.slice(prefix.length);
+        const lastSeq = parseInt(lastSeqStr, 10);
+        if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+      }
+
+      admission_number = `${prefix}${String(nextSeq).padStart(4, "0")}`;
     }
 
+    // ------------------------------------------------------------------------
+    // 2. Photo handling
+    // ------------------------------------------------------------------------
     let photo_filename = null;
     if (req.file) {
       photo_filename = req.file.filename;
     }
 
-    // Convert string booleans to actual booleans
+    // ------------------------------------------------------------------------
+    // 3. Booleans
+    // ------------------------------------------------------------------------
     const feeBlockBoolean = has_fee_block === "true" || has_fee_block === true;
     const isActiveBoolean = is_active !== "false";
 
-    // Insert student
+    // ------------------------------------------------------------------------
+    // 4. Insert student
+    // ------------------------------------------------------------------------
     const [studentResult] = await connection.query(
       `INSERT INTO students 
-       (admission_number, first_name, last_name, date_of_birth, gender, parent_name, parent_contact, parent_email, address, enrolled_date, has_fee_block, is_active, photo_filename) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?)`,
+        (admission_number, first_name, last_name, date_of_birth, gender,
+         parent_name, parent_contact, parent_email, address, enrolled_date,
+         has_fee_block, is_active, photo_filename) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         admission_number,
         first_name,
@@ -2590,9 +3250,10 @@ const createStudent = async (req, res) => {
 
     const studentId = studentResult.insertId;
 
-    // If class_id is provided, assign student to class for current academic year
+    // ------------------------------------------------------------------------
+    // 5. Class assignment (unchanged)
+    // ------------------------------------------------------------------------
     if (class_id) {
-      // Get current academic year
       const [currentYear] = await connection.query(
         "SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1",
       );
@@ -2602,7 +3263,7 @@ const createStudent = async (req, res) => {
 
         await connection.query(
           `INSERT INTO class_assignments 
-           (student_id, class_id, academic_year_id, promotion_status) 
+             (student_id, class_id, academic_year_id, promotion_status) 
            VALUES (?, ?, ?, 'Pending')`,
           [studentId, class_id, academicYearId],
         );
@@ -2613,7 +3274,9 @@ const createStudent = async (req, res) => {
 
     clearRelevantCaches("UPDATE_STUDENT");
 
-    // Return the created student with class info
+    // ------------------------------------------------------------------------
+    // 6. Return the created student (now includes the final admission_number)
+    // ------------------------------------------------------------------------
     const [newStudent] = await connection.query(
       `
       SELECT s.*, 
@@ -2633,7 +3296,6 @@ const createStudent = async (req, res) => {
     res.status(201).json(newStudent[0]);
   } catch (error) {
     await connection.rollback();
-    // Delete uploaded file if error occurs
     if (req.file) {
       fs.unlinkSync(req.file.path);
     }
@@ -2920,10 +3582,10 @@ const importStudents = async (req, res) => {
           !first_name ||
           !last_name ||
           // !date_of_birth ||
-          !gender ||
-          !parent_name ||
-          !parent_contact ||
-          !parent_email
+          !gender
+          // !parent_name ||
+          // !parent_contact ||
+          // !parent_email
         ) {
           results.errors.push({
             row: studentData._row,
@@ -5093,6 +5755,7 @@ const generateStudentReportCardPDF = async (req, res = null) => {
       // termStartDate,
       // termEndDate
     );
+
 
     // Use the fresh data, but fall back to report card data if needed
     const attendanceData = {
@@ -7321,6 +7984,331 @@ const calculateStudentPaymentStatus = (finalizedBill, bills) => {
 };
 
 // GET /api/getstudentbills - Get student bills with pagination (FIXED FOR DUPLICATES)
+// const getStudentBills = async (req, res) => {
+//   try {
+//     const {
+//       student_id,
+//       class_id,
+//       academic_year_id,
+//       term_id,
+//       status,
+//       active_only = "true",
+//       page = 1,
+//       limit = 20,
+//     } = req.query;
+
+//     const pageNum = parseInt(page);
+//     const limitNum = parseInt(limit);
+//     const offset = (pageNum - 1) * limitNum;
+
+//     // If specific student is requested, don't paginate
+//     const isSpecificStudent = student_id && student_id !== "";
+
+//     // Build WHERE conditions for students
+//     let studentWhereConditions = ["1=1"];
+//     let queryParams = [];
+
+//     // Specific student filter (no pagination needed)
+//     if (isSpecificStudent) {
+//       studentWhereConditions.push("s.id = ?");
+//       queryParams.push(student_id);
+//     }
+
+//     // Class filter
+//     if (class_id && class_id !== "") {
+//       studentWhereConditions.push("ca.class_id = ?");
+//       queryParams.push(class_id);
+//     }
+
+//     // Academic year filter for class assignments
+//     if (academic_year_id && academic_year_id !== "") {
+//       studentWhereConditions.push("ca.academic_year_id = ?");
+//       queryParams.push(academic_year_id);
+//     }
+
+//     // Active only filter
+//     if (active_only === "true") {
+//       studentWhereConditions.push(
+//         "(s.is_active IS NULL OR s.is_active = TRUE)",
+//       );
+//     }
+
+//     // ========== STEP 1: Get total count of UNIQUE students ==========
+//     let total = 0;
+//     let totalPages = 0;
+//     let paginatedStudents = [];
+
+//     if (!isSpecificStudent) {
+//       const [countResult] = await pool.query(
+//         `SELECT COUNT(DISTINCT s.id) as total
+//          FROM students s
+//          INNER JOIN class_assignments ca ON s.id = ca.student_id
+//          WHERE ${studentWhereConditions.join(" AND ")}`,
+//         queryParams,
+//       );
+
+//       total = countResult[0].total;
+//       totalPages = Math.ceil(total / limitNum);
+
+//       // ========== STEP 2: Get paginated students ==========
+//       [paginatedStudents] = await pool.query(
+//         `SELECT DISTINCT
+//            s.id as student_id,
+//            s.first_name,
+//            s.last_name,
+//            s.admission_number,
+//            c.class_name,
+//            c.id as class_id
+//          FROM students s
+//          INNER JOIN class_assignments ca ON s.id = ca.student_id
+//          INNER JOIN classes c ON ca.class_id = c.id
+//          WHERE ${studentWhereConditions.join(" AND ")}
+//          ORDER BY s.first_name, s.last_name
+//          LIMIT ? OFFSET ?`,
+//         [...queryParams, limitNum, offset],
+//       );
+//     } else {
+//       // For specific student, get that student only
+//       [paginatedStudents] = await pool.query(
+//         `SELECT DISTINCT
+//            s.id as student_id,
+//            s.first_name,
+//            s.last_name,
+//            s.admission_number,
+//            c.class_name,
+//            c.id as class_id
+//          FROM students s
+//          INNER JOIN class_assignments ca ON s.id = ca.student_id
+//          INNER JOIN classes c ON ca.class_id = c.id
+//          WHERE ${studentWhereConditions.join(" AND ")}`,
+//         queryParams,
+//       );
+
+//       total = paginatedStudents.length;
+//       totalPages = 1;
+//     }
+
+//     // If no students found, return empty result
+//     if (paginatedStudents.length === 0) {
+//       return res.json({
+//         success: true,
+//         bills: [],
+//         pagination: {
+//           page: pageNum,
+//           limit: limitNum,
+//           total: 0,
+//           totalPages: 0,
+//           hasNextPage: false,
+//           hasPrevPage: false,
+//         },
+//       });
+//     }
+
+//     // ========== STEP 3: Get bills for these specific students ==========
+//     const studentIds = paginatedStudents.map((s) => s.student_id);
+//     const placeholders = studentIds.map(() => "?").join(",");
+
+//     // Build bill query conditions
+//     let billConditions = [`b.student_id IN (${placeholders})`];
+//     let billParams = [...studentIds];
+
+//     if (academic_year_id && academic_year_id !== "") {
+//       billConditions.push("bt.academic_year_id = ?");
+//       billParams.push(academic_year_id);
+//     }
+
+//     if (term_id && term_id !== "") {
+//       billConditions.push("bt.term_id = ?");
+//       billParams.push(term_id);
+//     }
+
+//     if (status && status !== "all") {
+//       billConditions.push("b.payment_status = ?");
+//       billParams.push(status);
+//     }
+
+//     // Get unique bills (using DISTINCT to prevent duplicates)
+//     const [bills] = await pool.query(
+//       `SELECT DISTINCT
+//          b.id,
+//          b.student_id,
+//          b.amount,
+//          b.due_date,
+//          b.status as bill_status,
+//          b.paid_amount,
+//          b.remaining_amount,
+//          b.payment_status,
+//          b.description as bill_description,
+//          b.created_at,
+//          bt.id as template_id,
+//          bt.is_compulsory,
+//          bt.description as template_description,
+//          bt.academic_year_id,
+//          bt.term_id,
+//          fc.id as fee_category_id,
+//          fc.category_name,
+//          s.first_name,
+//          s.last_name,
+//          s.admission_number,
+//          c.class_name
+//        FROM bills b
+//        INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
+//        INNER JOIN fee_categories fc ON bt.fee_category_id = fc.id
+//        INNER JOIN students s ON b.student_id = s.id
+//        INNER JOIN class_assignments ca ON s.id = ca.student_id
+//        INNER JOIN classes c ON ca.class_id = c.id
+//        WHERE ${billConditions.join(" AND ")}
+//        ORDER BY s.first_name, s.last_name, b.due_date ASC`,
+//       billParams,
+//     );
+
+//     // ========== STEP 4: Get finalized term bills for these students ==========
+//     let termBillsMap = {};
+//     if (academic_year_id && term_id) {
+//       const [termBills] = await pool.query(
+//         `SELECT
+//            student_id,
+//            id as term_bill_id,
+//            total_amount,
+//            paid_amount,
+//            remaining_balance,
+//            is_fully_paid,
+//            selected_bills,
+//            compulsory_amount,
+//            optional_amount
+//          FROM student_term_bills
+//          WHERE student_id IN (${placeholders})
+//            AND academic_year_id = ?
+//            AND term_id = ?
+//            AND is_finalized = TRUE`,
+//         [...studentIds, academic_year_id, term_id],
+//       );
+
+//       // Create map for quick lookup
+//       termBillsMap = termBills.reduce((acc, tb) => {
+//         acc[tb.student_id] = tb;
+//         return acc;
+//       }, {});
+//     }
+
+//     // ========== STEP 5: Build response with calculated totals ==========
+//     const responseBills = bills.map((bill) => {
+//       const termBill = termBillsMap[bill.student_id];
+//       let finalAmount = parseFloat(bill.amount);
+//       let isSelected = true;
+
+//       // Check if this bill is in the finalized term bill
+//       if (termBill && termBill.selected_bills) {
+//         let selectedData = termBill.selected_bills;
+//         if (typeof selectedData === "string") {
+//           try {
+//             selectedData = JSON.parse(selectedData);
+//           } catch (e) {
+//             selectedData = { bill_ids: [] };
+//           }
+//         }
+
+//         const selectedBillIds = selectedData.bill_ids || [];
+//         const editedAmounts = selectedData.edited_amounts || {};
+
+//         isSelected = selectedBillIds.includes(bill.id);
+
+//         if (isSelected && editedAmounts[bill.id]) {
+//           finalAmount = parseFloat(editedAmounts[bill.id]);
+//         }
+//       }
+
+//       return {
+//         id: bill.id,
+//         student_id: bill.student_id,
+//         amount: bill.amount,
+//         finalAmount: finalAmount,
+//         due_date: bill.due_date,
+//         bill_status: bill.bill_status,
+//         paid_amount: bill.paid_amount,
+//         remaining_amount: bill.remaining_amount,
+//         payment_status: bill.payment_status,
+//         bill_description: bill.bill_description,
+//         is_compulsory: bill.is_compulsory,
+//         category_name: bill.category_name,
+//         first_name: bill.first_name,
+//         last_name: bill.last_name,
+//         admission_number: bill.admission_number,
+//         class_name: bill.class_name,
+//         isSelected: isSelected,
+//         hasCustomAmount: finalAmount !== parseFloat(bill.amount),
+//         originalAmount: parseFloat(bill.amount),
+//         status: bill.payment_status || "Pending",
+//       };
+//     });
+
+//     // Remove duplicates by bill id (just in case)
+//     const uniqueBills = [];
+//     const seenBillIds = new Set();
+
+//     for (const bill of responseBills) {
+//       if (!seenBillIds.has(bill.id)) {
+//         seenBillIds.add(bill.id);
+//         uniqueBills.push(bill);
+//       }
+//     }
+
+//     // For specific student request, return all bills without pagination wrapper
+//     if (isSpecificStudent) {
+//       return res.json({
+//         success: true,
+//         bills: uniqueBills,
+//         student_info: paginatedStudents[0]
+//           ? {
+//               id: paginatedStudents[0].student_id,
+//               name: `${paginatedStudents[0].first_name} ${paginatedStudents[0].last_name}`,
+//               admission_number: paginatedStudents[0].admission_number,
+//               class_name: paginatedStudents[0].class_name,
+//             }
+//           : null,
+//         has_finalized_bill: !!termBillsMap[student_id],
+//         finalized_bill: termBillsMap[student_id] || null,
+//       });
+//     }
+
+//     // ========== STEP 6: Return paginated response ==========
+//     res.json({
+//       success: true,
+//       bills: uniqueBills,
+//       pagination: {
+//         page: pageNum,
+//         limit: limitNum,
+//         total: total,
+//         totalPages: totalPages,
+//         hasNextPage: pageNum < totalPages,
+//         hasPrevPage: pageNum > 1,
+//         startIndex: offset + 1,
+//         endIndex: Math.min(offset + limitNum, total),
+//       },
+//       filters: {
+//         class_id: class_id || null,
+//         academic_year_id: academic_year_id || null,
+//         term_id: term_id || null,
+//         status: status || "all",
+//         active_only: active_only === "true",
+//       },
+//       summary: {
+//         students_in_page: paginatedStudents.length,
+//         total_students_with_bills: total,
+//         total_bills_in_page: uniqueBills.length,
+//       },
+//       timestamp: new Date().toISOString(),
+//     });
+//   } catch (error) {
+//     console.error("Error fetching student bills:", error);
+//     res.status(500).json({
+//       error: "Failed to fetch student bills",
+//       details:
+//         process.env.NODE_ENV === "development" ? error.message : undefined,
+//     });
+//   }
+// };
+
 const getStudentBills = async (req, res) => {
   try {
     const {
@@ -7338,39 +8326,33 @@ const getStudentBills = async (req, res) => {
     const limitNum = parseInt(limit);
     const offset = (pageNum - 1) * limitNum;
 
-    // If specific student is requested, don't paginate
     const isSpecificStudent = student_id && student_id !== "";
 
-    // Build WHERE conditions for students
     let studentWhereConditions = ["1=1"];
     let queryParams = [];
 
-    // Specific student filter (no pagination needed)
     if (isSpecificStudent) {
       studentWhereConditions.push("s.id = ?");
       queryParams.push(student_id);
     }
 
-    // Class filter
     if (class_id && class_id !== "") {
       studentWhereConditions.push("ca.class_id = ?");
       queryParams.push(class_id);
     }
 
-    // Academic year filter for class assignments
     if (academic_year_id && academic_year_id !== "") {
       studentWhereConditions.push("ca.academic_year_id = ?");
       queryParams.push(academic_year_id);
     }
 
-    // Active only filter
     if (active_only === "true") {
       studentWhereConditions.push(
         "(s.is_active IS NULL OR s.is_active = TRUE)",
       );
     }
 
-    // ========== STEP 1: Get total count of UNIQUE students ==========
+    // ========== STEP 1: Get total count + paginated students ==========
     let total = 0;
     let totalPages = 0;
     let paginatedStudents = [];
@@ -7387,7 +8369,6 @@ const getStudentBills = async (req, res) => {
       total = countResult[0].total;
       totalPages = Math.ceil(total / limitNum);
 
-      // ========== STEP 2: Get paginated students ==========
       [paginatedStudents] = await pool.query(
         `SELECT DISTINCT
            s.id as student_id,
@@ -7405,7 +8386,6 @@ const getStudentBills = async (req, res) => {
         [...queryParams, limitNum, offset],
       );
     } else {
-      // For specific student, get that student only
       [paginatedStudents] = await pool.query(
         `SELECT DISTINCT
            s.id as student_id,
@@ -7425,11 +8405,16 @@ const getStudentBills = async (req, res) => {
       totalPages = 1;
     }
 
-    // If no students found, return empty result
+    const studentClassMap = {};
+    paginatedStudents.forEach((s) => {
+      studentClassMap[s.student_id] = s.class_name;
+    });
+
     if (paginatedStudents.length === 0) {
       return res.json({
         success: true,
         bills: [],
+        student_summaries: {},
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -7441,11 +8426,10 @@ const getStudentBills = async (req, res) => {
       });
     }
 
-    // ========== STEP 3: Get bills for these specific students ==========
     const studentIds = paginatedStudents.map((s) => s.student_id);
     const placeholders = studentIds.map(() => "?").join(",");
 
-    // Build bill query conditions
+    // ========== STEP 2: Get bills for these students (unchanged) ==========
     let billConditions = [`b.student_id IN (${placeholders})`];
     let billParams = [...studentIds];
 
@@ -7464,7 +8448,40 @@ const getStudentBills = async (req, res) => {
       billParams.push(status);
     }
 
-    // Get unique bills (using DISTINCT to prevent duplicates)
+    // const [bills] = await pool.query(
+    //   `SELECT DISTINCT
+    //      b.id,
+    //      b.student_id,
+    //      b.amount,
+    //      b.due_date,
+    //      b.status as bill_status,
+    //      b.paid_amount,
+    //      b.remaining_amount,
+    //      b.payment_status,
+    //      b.description as bill_description,
+    //      b.created_at,
+    //      bt.id as template_id,
+    //      bt.is_compulsory,
+    //      bt.description as template_description,
+    //      bt.academic_year_id,
+    //      bt.term_id,
+    //      fc.id as fee_category_id,
+    //      fc.category_name,
+    //      s.first_name,
+    //      s.last_name,
+    //      s.admission_number,
+    //      c.class_name
+    //    FROM bills b
+    //    INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
+    //    INNER JOIN fee_categories fc ON bt.fee_category_id = fc.id
+    //    INNER JOIN students s ON b.student_id = s.id
+    //    INNER JOIN class_assignments ca ON s.id = ca.student_id
+    //    INNER JOIN classes c ON ca.class_id = c.id
+    //    WHERE ${billConditions.join(" AND ")}
+    //    ORDER BY s.first_name, s.last_name, b.due_date ASC`,
+    //   billParams,
+    // );
+
     const [bills] = await pool.query(
       `SELECT DISTINCT
          b.id,
@@ -7486,24 +8503,21 @@ const getStudentBills = async (req, res) => {
          fc.category_name,
          s.first_name,
          s.last_name,
-         s.admission_number,
-         c.class_name
+         s.admission_number
        FROM bills b
        INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
        INNER JOIN fee_categories fc ON bt.fee_category_id = fc.id
        INNER JOIN students s ON b.student_id = s.id
-       INNER JOIN class_assignments ca ON s.id = ca.student_id
-       INNER JOIN classes c ON ca.class_id = c.id
        WHERE ${billConditions.join(" AND ")}
        ORDER BY s.first_name, s.last_name, b.due_date ASC`,
       billParams,
     );
 
-    // ========== STEP 4: Get finalized term bills for these students ==========
+    // ========== STEP 3: Get finalized term bills (unchanged logic) ==========
     let termBillsMap = {};
     if (academic_year_id && term_id) {
       const [termBills] = await pool.query(
-        `SELECT 
+        `SELECT
            student_id,
            id as term_bill_id,
            total_amount,
@@ -7512,7 +8526,9 @@ const getStudentBills = async (req, res) => {
            is_fully_paid,
            selected_bills,
            compulsory_amount,
-           optional_amount
+           optional_amount,
+           updated_at,
+           created_at
          FROM student_term_bills
          WHERE student_id IN (${placeholders})
            AND academic_year_id = ?
@@ -7521,32 +8537,107 @@ const getStudentBills = async (req, res) => {
         [...studentIds, academic_year_id, term_id],
       );
 
-      // Create map for quick lookup
       termBillsMap = termBills.reduce((acc, tb) => {
         acc[tb.student_id] = tb;
         return acc;
       }, {});
     }
 
-    // ========== STEP 5: Build response with calculated totals ==========
+    // ========== STEP 4 (NEW): Batch arrears totals for this page ==========
+    // One query for the whole page instead of one call per student.
+    let arrearsMap = {};
+    {
+      let arrearsConditions = [`student_id IN (${placeholders})`];
+      let arrearsParams = [...studentIds];
+      if (academic_year_id) {
+        arrearsConditions.push("academic_year_id = ?");
+        arrearsParams.push(academic_year_id);
+      }
+      const [arrearsRows] = await pool.query(
+        `SELECT student_id, SUM(amount) as total_arrears
+         FROM student_arrears
+         WHERE ${arrearsConditions.join(" AND ")}
+         GROUP BY student_id`,
+        arrearsParams,
+      );
+      arrearsMap = arrearsRows.reduce((acc, row) => {
+        acc[row.student_id] = parseFloat(row.total_arrears) || 0;
+        return acc;
+      }, {});
+    }
+
+    // ========== STEP 5 (NEW): Batch overpayment totals for this page ==========
+    let overpaymentsMap = {};
+    {
+      const [overpaymentRows] = await pool.query(
+        `SELECT student_id, SUM(amount) as total_overpayments
+         FROM student_overpayments
+         WHERE student_id IN (${placeholders})
+           AND status = 'Active'
+         GROUP BY student_id`,
+        studentIds,
+      );
+      overpaymentsMap = overpaymentRows.reduce((acc, row) => {
+        acc[row.student_id] = parseFloat(row.total_overpayments) || 0;
+        return acc;
+      }, {});
+    }
+
+    // ========== STEP 6 (NEW): Build per-student summary map ==========
+    // This replaces the frontend's separate calls to:
+    //   /getstudentarrears/:id
+    //   /getstudentoverpayments/:id
+    //   /getstudenttermbill/:id
+    const studentSummaries = {};
+    for (const s of paginatedStudents) {
+      const finalizedBill = termBillsMap[s.student_id] || null;
+
+      // Parse selected_bills once here so the frontend never has to.
+      let parsedSelectedBills = null;
+      if (finalizedBill && finalizedBill.selected_bills) {
+        try {
+          parsedSelectedBills =
+            typeof finalizedBill.selected_bills === "string"
+              ? JSON.parse(finalizedBill.selected_bills)
+              : finalizedBill.selected_bills;
+        } catch (e) {
+          parsedSelectedBills = null;
+        }
+      }
+
+      studentSummaries[s.student_id] = {
+        student_id: s.student_id,
+        arrears_total: arrearsMap[s.student_id] || 0,
+        overpayments_total: overpaymentsMap[s.student_id] || 0,
+        finalized_bill: finalizedBill
+          ? {
+              term_bill_id: finalizedBill.term_bill_id,
+              total_amount: parseFloat(finalizedBill.total_amount) || 0,
+              paid_amount: parseFloat(finalizedBill.paid_amount) || 0,
+              remaining_balance:
+                parseFloat(finalizedBill.remaining_balance) || 0,
+              is_fully_paid: !!finalizedBill.is_fully_paid,
+              compulsory_amount:
+                parseFloat(finalizedBill.compulsory_amount) || 0,
+              optional_amount: parseFloat(finalizedBill.optional_amount) || 0,
+              updated_at: finalizedBill.updated_at,
+              created_at: finalizedBill.created_at,
+              selected_bills: parsedSelectedBills,
+            }
+          : null,
+      };
+    }
+
+    // ========== STEP 7: Build response bills (unchanged) ==========
     const responseBills = bills.map((bill) => {
-      const termBill = termBillsMap[bill.student_id];
+      const summary = studentSummaries[bill.student_id];
+      const finalizedBill = summary?.finalized_bill;
       let finalAmount = parseFloat(bill.amount);
       let isSelected = true;
 
-      // Check if this bill is in the finalized term bill
-      if (termBill && termBill.selected_bills) {
-        let selectedData = termBill.selected_bills;
-        if (typeof selectedData === "string") {
-          try {
-            selectedData = JSON.parse(selectedData);
-          } catch (e) {
-            selectedData = { bill_ids: [] };
-          }
-        }
-
-        const selectedBillIds = selectedData.bill_ids || [];
-        const editedAmounts = selectedData.edited_amounts || {};
+      if (finalizedBill && finalizedBill.selected_bills) {
+        const selectedBillIds = finalizedBill.selected_bills.bill_ids || [];
+        const editedAmounts = finalizedBill.selected_bills.edited_amounts || {};
 
         isSelected = selectedBillIds.includes(bill.id);
 
@@ -7571,7 +8662,7 @@ const getStudentBills = async (req, res) => {
         first_name: bill.first_name,
         last_name: bill.last_name,
         admission_number: bill.admission_number,
-        class_name: bill.class_name,
+        class_name: studentClassMap[bill.student_id] || null,
         isSelected: isSelected,
         hasCustomAmount: finalAmount !== parseFloat(bill.amount),
         originalAmount: parseFloat(bill.amount),
@@ -7579,10 +8670,8 @@ const getStudentBills = async (req, res) => {
       };
     });
 
-    // Remove duplicates by bill id (just in case)
     const uniqueBills = [];
     const seenBillIds = new Set();
-
     for (const bill of responseBills) {
       if (!seenBillIds.has(bill.id)) {
         seenBillIds.add(bill.id);
@@ -7590,8 +8679,8 @@ const getStudentBills = async (req, res) => {
       }
     }
 
-    // For specific student request, return all bills without pagination wrapper
     if (isSpecificStudent) {
+      const summary = studentSummaries[student_id];
       return res.json({
         success: true,
         bills: uniqueBills,
@@ -7603,15 +8692,18 @@ const getStudentBills = async (req, res) => {
               class_name: paginatedStudents[0].class_name,
             }
           : null,
-        has_finalized_bill: !!termBillsMap[student_id],
-        finalized_bill: termBillsMap[student_id] || null,
+        has_finalized_bill: !!summary?.finalized_bill,
+        finalized_bill: summary?.finalized_bill || null,
+        arrears_total: summary?.arrears_total || 0,
+        overpayments_total: summary?.overpayments_total || 0,
       });
     }
 
-    // ========== STEP 6: Return paginated response ==========
+    // ========== STEP 8: Return paginated response WITH summaries ==========
     res.json({
       success: true,
       bills: uniqueBills,
+      student_summaries: studentSummaries, // <-- NEW: everything the frontend needs, in one place
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -8334,12 +9426,6 @@ const checkStudentPayments = async (req, res) => {
   try {
     const { studentId } = req.params;
     const { academic_year_id, term_id } = req.query;
-
-    console.log("Checking payments for:", {
-      studentId,
-      academic_year_id,
-      term_id,
-    });
 
     // Check if any payments exist for this student's bills in the SPECIFIC term
     const [payments] = await pool.query(
@@ -9113,10 +10199,10 @@ const deleteStudentOverpayment = async (req, res) => {
 //     // Get all students in the class
 //     const [students] = await pool.query(
 //       `
-//       SELECT 
+//       SELECT
 //         s.id as student_id,
 //         s.first_name,
-//         s.last_name, 
+//         s.last_name,
 //         s.admission_number,
 //         s.date_of_birth,
 //         s.gender,
@@ -9128,7 +10214,7 @@ const deleteStudentOverpayment = async (req, res) => {
 //       INNER JOIN class_assignments ca ON s.id = ca.student_id
 //       LEFT JOIN classes c ON ca.class_id = c.id
 //       INNER JOIN academic_years ay ON ca.academic_year_id = ay.id
-//       WHERE ca.class_id = ? AND ca.academic_year_id = ? 
+//       WHERE ca.class_id = ? AND ca.academic_year_id = ?
 //       AND (s.is_active IS NULL OR s.is_active = TRUE)
 //       ORDER BY s.first_name, s.last_name
 //       `,
@@ -9161,7 +10247,7 @@ const deleteStudentOverpayment = async (req, res) => {
 //         // FIRST: Check if student has finalized bill
 //         const [termBill] = await pool.query(
 //           `
-//           SELECT * FROM student_term_bills 
+//           SELECT * FROM student_term_bills
 //           WHERE student_id = ? AND academic_year_id = ? AND term_id = ? AND is_finalized = TRUE
 //           `,
 //           [student.student_id, academic_year_id, term_id],
@@ -9196,7 +10282,7 @@ const deleteStudentOverpayment = async (req, res) => {
 //           if (selectedBillIds.length > 0) {
 //             [bills] = await pool.query(
 //               `
-//                 SELECT 
+//                 SELECT
 //                   b.*,
 //                   bt.description,
 //                   bt.is_compulsory,
@@ -9240,13 +10326,13 @@ const deleteStudentOverpayment = async (req, res) => {
 
 //           // Get arrears and overpayments (use current data, not stored)
 //           const [arrears] = await pool.query(
-//             `SELECT * FROM student_arrears 
+//             `SELECT * FROM student_arrears
 //              WHERE student_id = ? AND (academic_year_id = ? OR academic_year_id IS NULL)`,
 //             [student.student_id, academic_year_id],
 //           );
 
 //           const [overpayments] = await pool.query(
-//             `SELECT * FROM student_overpayments 
+//             `SELECT * FROM student_overpayments
 //              WHERE student_id = ? AND status = 'Active' AND (academic_year_id = ? OR academic_year_id IS NULL)`,
 //             [student.student_id, academic_year_id],
 //           );
@@ -9277,7 +10363,7 @@ const deleteStudentOverpayment = async (req, res) => {
 //           // NOT FINALIZED: Show ALL bills (both compulsory and optional) but only calculate compulsory in total
 //           const [bills] = await pool.query(
 //             `
-//             SELECT 
+//             SELECT
 //               b.*,
 //               bt.description,
 //               bt.is_compulsory,
@@ -9294,13 +10380,13 @@ const deleteStudentOverpayment = async (req, res) => {
 
 //           // Get arrears and overpayments
 //           const [arrears] = await pool.query(
-//             `SELECT * FROM student_arrears 
+//             `SELECT * FROM student_arrears
 //              WHERE student_id = ? AND (academic_year_id = ? OR academic_year_id IS NULL)`,
 //             [student.student_id, academic_year_id],
 //           );
 
 //           const [overpayments] = await pool.query(
-//             `SELECT * FROM student_overpayments 
+//             `SELECT * FROM student_overpayments
 //              WHERE student_id = ? AND status = 'Active' AND (academic_year_id = ? OR academic_year_id IS NULL)`,
 //             [student.student_id, academic_year_id],
 //           );
@@ -13386,14 +14472,6 @@ const exportCashReceipts = async (req, res) => {
       format = "excel",
     } = req.query;
 
-    console.log("Export request received:", {
-      start_date,
-      end_date,
-      fee_category_id,
-      source,
-      format,
-    });
-
     let whereConditions = ["1=1"];
     let queryParams = [];
 
@@ -13419,9 +14497,6 @@ const exportCashReceipts = async (req, res) => {
       queryParams.push(`%${source}%`);
     }
 
-    console.log("Query conditions:", whereConditions);
-    console.log("Query params:", queryParams);
-
     // Get data
     const [receipts] = await pool.query(
       `SELECT 
@@ -13443,8 +14518,6 @@ const exportCashReceipts = async (req, res) => {
        ORDER BY cr.receipt_date DESC, cr.id DESC`,
       queryParams,
     );
-
-    console.log(`Found ${receipts.length} receipts for export`);
 
     // Get summary
     const [summary] = await pool.query(
@@ -17136,6 +18209,7 @@ const getClassPerformanceAssessment = async (req, res) => {
 };
 
 // Simpler version - process JSON in JavaScript instead of MySQL
+
 const getStudentsByBillCategory = async (req, res) => {
   try {
     const {
@@ -17174,25 +18248,7 @@ const getStudentsByBillCategory = async (req, res) => {
       queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    // Get total count
-    const [countResult] = await pool.query(
-      `SELECT COUNT(DISTINCT s.id) as total
-       FROM students s
-       INNER JOIN class_assignments ca ON s.id = ca.student_id 
-         AND ca.academic_year_id = ?
-       INNER JOIN bills b ON s.id = b.student_id
-       INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
-       INNER JOIN student_term_bills stb ON s.id = stb.student_id 
-         AND stb.academic_year_id = bt.academic_year_id 
-         AND stb.term_id = bt.term_id
-       WHERE ${whereConditions.join(" AND ")}`,
-      [academic_year_id, ...queryParams],
-    );
-
-    const total = countResult[0].total;
-    const totalPages = Math.ceil(total / limitNum);
-
-    // Get paginated data - without JSON processing in SQL
+    // Get ALL students with bills in this category (no JSON filter in SQL)
     queryParams.push(limitNum, offset);
     const [students] = await pool.query(
       `SELECT 
@@ -17231,8 +18287,34 @@ const getStudentsByBillCategory = async (req, res) => {
       [academic_year_id, ...queryParams],
     );
 
-    // Process JSON data in JavaScript
-    const processedStudents = students.map((student) => {
+    // Filter in JavaScript
+    const filteredStudents = students.filter((student) => {
+      if (!student.selected_bills) {
+        console.log("No selected_bills for student:", student.student_id);
+        return false;
+      }
+
+      try {
+        let selectedData;
+        if (typeof student.selected_bills === "string") {
+          selectedData = JSON.parse(student.selected_bills);
+        } else {
+          selectedData = student.selected_bills;
+        }
+
+        // Check multiple possible structures
+        const billIds = selectedData.bill_ids || [];
+        const isSelected = billIds.includes(student.bill_id);
+
+        return isSelected;
+      } catch (e) {
+        console.error("Error parsing selected_bills:", e);
+        return false;
+      }
+    });
+
+    // Process the filtered students
+    const processedStudents = filteredStudents.map((student) => {
       let hasCustomAmount = false;
       let finalAmount = student.bill_amount;
 
@@ -17249,7 +18331,6 @@ const getStudentsByBillCategory = async (req, res) => {
             finalAmount = editedAmounts[student.bill_id];
           }
         } catch (e) {
-          // If JSON parsing fails, use the original amount
           finalAmount = student.bill_amount;
         }
       }
@@ -17258,64 +18339,58 @@ const getStudentsByBillCategory = async (req, res) => {
         ...student,
         has_custom_amount: hasCustomAmount,
         final_amount: finalAmount,
-        selected_bills: undefined, // Remove the raw JSON
+        selected_bills: undefined,
       };
     });
 
-    // Get summary statistics
-    const [summary] = await pool.query(
-      `SELECT 
-         COUNT(DISTINCT s.id) as total_students,
-         COALESCE(SUM(b.amount), 0) as total_amount,
-         COALESCE(AVG(b.amount), 0) as average_amount,
-         MIN(b.amount) as min_amount,
-         MAX(b.amount) as max_amount,
-         COUNT(DISTINCT c.id) as total_classes
-       FROM students s
-       INNER JOIN class_assignments ca ON s.id = ca.student_id 
-         AND ca.academic_year_id = ?
-       INNER JOIN classes c ON ca.class_id = c.id
-       INNER JOIN bills b ON s.id = b.student_id
-       INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
-       INNER JOIN student_term_bills stb ON s.id = stb.student_id 
-         AND stb.academic_year_id = bt.academic_year_id 
-         AND stb.term_id = bt.term_id
-       WHERE ${whereConditions.join(" AND ")}`,
-      [academic_year_id, ...queryParams.slice(0, -2)],
-    );
-
-    // Get class breakdown
-    const [classBreakdown] = await pool.query(
-      `SELECT 
-         c.id as class_id,
-         c.class_name,
-         COUNT(DISTINCT s.id) as student_count,
-         COALESCE(SUM(b.amount), 0) as total_amount
-       FROM students s
-       INNER JOIN class_assignments ca ON s.id = ca.student_id 
-         AND ca.academic_year_id = ?
-       INNER JOIN classes c ON ca.class_id = c.id
-       INNER JOIN bills b ON s.id = b.student_id
-       INNER JOIN bill_templates bt ON b.bill_template_id = bt.id
-       INNER JOIN student_term_bills stb ON s.id = stb.student_id 
-         AND stb.academic_year_id = bt.academic_year_id 
-         AND stb.term_id = bt.term_id
-       WHERE ${whereConditions.slice(0, -1).join(" AND ")}
-       GROUP BY c.id, c.class_name
-       ORDER BY c.class_name`,
-      [academic_year_id, fee_category_id, academic_year_id, term_id],
+    // Calculate summary from filtered results
+    const totalStudents = processedStudents.length;
+    const totalAmount = processedStudents.reduce(
+      (sum, s) => sum + parseFloat(s.bill_amount || 0),
+      0,
     );
 
     res.json({
       students: processedStudents,
-      summary: summary[0] || {},
-      class_breakdown: classBreakdown,
+      summary: {
+        total_students: totalStudents,
+        total_amount: totalAmount,
+        average_amount: totalStudents > 0 ? totalAmount / totalStudents : 0,
+        min_amount:
+          totalStudents > 0
+            ? Math.min(
+                ...processedStudents.map((s) => parseFloat(s.bill_amount || 0)),
+              )
+            : 0,
+        max_amount:
+          totalStudents > 0
+            ? Math.max(
+                ...processedStudents.map((s) => parseFloat(s.bill_amount || 0)),
+              )
+            : 0,
+        total_classes: new Set(processedStudents.map((s) => s.class_id)).size,
+      },
+      class_breakdown: Object.values(
+        processedStudents.reduce((acc, s) => {
+          if (!acc[s.class_id]) {
+            acc[s.class_id] = {
+              class_id: s.class_id,
+              class_name: s.class_name,
+              student_count: 0,
+              total_amount: 0,
+            };
+          }
+          acc[s.class_id].student_count++;
+          acc[s.class_id].total_amount += parseFloat(s.bill_amount || 0);
+          return acc;
+        }, {}),
+      ),
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total,
-        totalPages,
-        hasNextPage: pageNum < totalPages,
+        total: totalStudents,
+        totalPages: Math.ceil(totalStudents / limitNum),
+        hasNextPage: pageNum < Math.ceil(totalStudents / limitNum),
         hasPrevPage: pageNum > 1,
       },
     });
@@ -17327,6 +18402,7 @@ const getStudentsByBillCategory = async (req, res) => {
     });
   }
 };
+
 
 module.exports = {
   getUsers,

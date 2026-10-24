@@ -14,6 +14,7 @@ import ImportStudentsModal from "../../components/students/ImportStudentsModal";
 import StudentDetailsModal from "../../components/students/StudentDetailsModal";
 import useDebounce from "../../hooks/useDebounce"; // NEW
 import api from "../../components/axiosconfig/axiosConfig";
+import { useAuth } from "../contexts/AuthContext";
 
 const StudentsList = () => {
   // State
@@ -46,6 +47,8 @@ const StudentsList = () => {
   // NEW: Cache
   const cacheRef = useRef({});
   const [cacheVersion, setCacheVersion] = useState(0);
+
+  const { user } = useAuth();
 
   // NEW: Function to clear cache
   const clearCache = useCallback(() => {
@@ -275,30 +278,56 @@ const StudentsList = () => {
     }
   };
 
+  // Handle save student (both add and edit)
+  // const handleSaveStudent = async (studentData) => {
+  //   try {
+  //     if (editingStudent) {
+  //       const response = await api.put(
+  //         `/updatestudent/${editingStudent.id}`,
+  //         studentData,
+  //         {
+  //           headers: {
+  //             "Content-Type": "multipart/form-data",
+  //           },
+  //         },
+  //       );
+  //       alert(response.data.message || "Student updated successfully!");
+  //     } else {
+  //       await api.post("/createstudent", studentData, {
+  //         headers: {
+  //           "Content-Type": "multipart/form-data",
+  //         },
+  //       });
+  //     }
+  //     setIsModalOpen(false);
+  //     getStudents(currentPage); // Refresh current page
+  //   } catch (error) {
+  //     console.error("Error saving student:", error);
+  //   }
+  // };
+
   const handleSaveStudent = async (studentData) => {
     try {
       if (editingStudent) {
         const response = await api.put(
           `/updatestudent/${editingStudent.id}`,
           studentData,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          },
+          { headers: { "Content-Type": "multipart/form-data" } },
         );
         alert(response.data.message || "Student updated successfully!");
+        setIsModalOpen(false);
+        getStudents(currentPage);
+        return null; // editing never triggers the card-enroll step
       } else {
-        await api.post("/createstudent", studentData, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+        const response = await api.post("/createstudent", studentData, {
+          headers: { "Content-Type": "multipart/form-data" },
         });
+        getStudents(currentPage); // refresh the list now; modal stays open for the card step
+        return response.data; // StudentForm needs this — it's newStudent[0] from createStudent
       }
-      setIsModalOpen(false);
-      getStudents(currentPage); // Refresh current page
     } catch (error) {
       console.error("Error saving student:", error);
+      return null;
     }
   };
 
@@ -668,6 +697,7 @@ const StudentsList = () => {
           loadingClasses={loadingClasses}
           onSave={handleSaveStudent}
           onCancel={() => setIsModalOpen(false)}
+          currentUserId={user?.id}
         />
       </Modal>
 

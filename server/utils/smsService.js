@@ -71,7 +71,7 @@ const getSMSTemplates = async () => {
   //const schoolName =
   //schoolSettings.school_short_name || schoolSettings.school_name || "REMALJ";
 
-  const schoolName = "REMALJ Summer Sch";
+  const schoolName = "REMALJ Carewell Insp. Sch";
 
   return {
     paymentReceipt: (student, payment, receiptNumber) => {
@@ -86,6 +86,16 @@ const getSMSTemplates = async () => {
     shortBalanceReminder: (student, balance) => {
       const amount = parseFloat(balance.remaining_balance).toFixed(2);
       return `${schoolName}: Fee balance of Ghc ${amount} due for ${student.first_name} ${student.last_name}. Please pay soon.`;
+    },
+
+    dropOffNotification: (student, time, guardianName) => {
+      const by = guardianName ? ` by ${guardianName}` : "";
+      return `${schoolName}: ${student.first_name} ${student.last_name} was dropped off at school today at ${time}${by}.`;
+    },
+
+    pickupNotification: (student, time, guardianName) => {
+      const by = guardianName ? ` by ${guardianName}` : "";
+      return `${schoolName}: ${student.first_name} ${student.last_name} was picked up from school today at ${time}${by}.`;
     },
   };
 };
@@ -160,9 +170,44 @@ const sendBalanceReminderSMS = async (student, balance) => {
   };
 };
 
+// Send pickup/dropoff notification SMS
+const sendPickupDropoffSMS = async (
+  student,
+  actionType,
+  time,
+  guardianName,
+  phoneOverride,
+) => {
+  const templates = await getSMSTemplates();
+
+  const message =
+    actionType === "Drop-off"
+      ? templates.dropOffNotification(student, time, guardianName)
+      : templates.pickupNotification(student, time, guardianName);
+
+  const phone = phoneOverride || student.parent_contact;
+
+  const result = await sendSMS(
+    student.id,
+    phone,
+    message,
+    actionType === "Drop-off" ? "dropoff_notification" : "pickup_notification",
+  );
+
+  return {
+    success: result.success,
+    message: result.success ? "SMS sent successfully" : result.error,
+    messageId: result.messageId || null,
+    error: result.error || null,
+    phone_used: phone,
+    sms_body: message,
+  };
+};
+
 module.exports = {
   sendSMS,
   sendPaymentReceiptSMS,
   sendBalanceReminderSMS,
+  sendPickupDropoffSMS,
   getSchoolSettingsForEmail,
 };

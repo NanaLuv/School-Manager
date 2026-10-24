@@ -18,7 +18,7 @@ const SubjectForm = ({ subject, onSave, onCancel, loading = false }) => {
         description: subject.description || "",
       });
     } else {
-      // Reset form when adding new subject
+      // Add mode → blank subject_code; backend assigns it on save.
       setFormData({
         subject_code: "",
         subject_name: "",
@@ -35,7 +35,6 @@ const SubjectForm = ({ subject, onSave, onCancel, loading = false }) => {
       [name]: value,
     }));
 
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors((prev) => ({
         ...prev,
@@ -47,11 +46,15 @@ const SubjectForm = ({ subject, onSave, onCancel, loading = false }) => {
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.subject_code.trim()) {
-      newErrors.subject_code = "Subject code is required";
-    } else if (!/^[A-Z0-9]{3,10}$/.test(formData.subject_code)) {
-      newErrors.subject_code =
-        "Subject code must be 3-10 uppercase letters/numbers";
+    // Only validate subject_code when editing. Auto-generated codes come from
+    // the server in add mode.
+    if (subject) {
+      if (!formData.subject_code.trim()) {
+        newErrors.subject_code = "Subject code is required";
+      } else if (!/^[A-Z0-9]{3,20}$/.test(formData.subject_code)) {
+        newErrors.subject_code =
+          "Subject code must be 3-20 uppercase letters or numbers";
+      }
     }
 
     if (!formData.subject_name.trim()) {
@@ -70,9 +73,15 @@ const SubjectForm = ({ subject, onSave, onCancel, loading = false }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      onSave(formData);
+    if (!validateForm()) return;
+
+    // In add mode, drop an empty subject_code so the backend generates one.
+    const payload = { ...formData };
+    if (!subject && !payload.subject_code?.trim()) {
+      delete payload.subject_code;
     }
+
+    onSave(payload);
   };
 
   const handleKeyPress = (e) => {
@@ -116,16 +125,21 @@ const SubjectForm = ({ subject, onSave, onCancel, loading = false }) => {
               value={formData.subject_code}
               onChange={handleChange}
               onKeyPress={handleKeyPress}
+              readOnly={!subject}
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors ${
                 errors.subject_code
                   ? "border-red-300 bg-red-50"
                   : "border-gray-300 focus:border-emerald-500"
+              } ${
+                !subject ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""
               } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
-              placeholder="e.g., MATH101"
+              placeholder={
+                subject ? "e.g., MAT001" : "Will be assigned on save"
+              }
               disabled={loading}
               autoFocus
             />
-            {!errors.subject_code && (
+            {!errors.subject_code && subject && (
               <div className="absolute inset-y-0 right-0 flex items-center pr-3">
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                   Required
@@ -138,9 +152,13 @@ const SubjectForm = ({ subject, onSave, onCancel, loading = false }) => {
               <XMarkIcon className="w-4 h-4 mr-1" />
               {errors.subject_code}
             </p>
+          ) : subject ? (
+            <p className="mt-2 text-sm text-gray-500">
+              Unique code for the subject (3-20 uppercase letters or numbers)
+            </p>
           ) : (
             <p className="mt-2 text-sm text-gray-500">
-              Unique code for the subject (3-10 uppercase letters/numbers)
+              Auto-generated from the subject name (e.g., Mathematics → MAT001).
             </p>
           )}
         </div>

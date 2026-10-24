@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 
 const TeacherForm = ({ teacher, onSave, onCancel }) => {
   const [formData, setFormData] = useState({
-    employee_id: "",
+    employee_id: "", // add mode: blank, backend assigns it. edit mode: filled below.
     first_name: "",
     last_name: "",
     contact_info: "",
@@ -12,16 +12,14 @@ const TeacherForm = ({ teacher, onSave, onCancel }) => {
 
   const [errors, setErrors] = useState({});
 
-  // Helper function to convert ISO date to yyyy-MM-dd format
+  // Helper: convert any date string to yyyy-MM-dd
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
 
-    // If it's already in yyyy-MM-dd format, return as is
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       return dateString;
     }
 
-    // If it's an ISO date, convert to yyyy-MM-dd
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return "";
 
@@ -42,8 +40,11 @@ const TeacherForm = ({ teacher, onSave, onCancel }) => {
         last_name: teacher.last_name || "",
         contact_info: teacher.contact_info || "",
         specialization: teacher.specialization || "",
-        hire_date: formattedHireDate || new Date().toISOString().split,
+        hire_date: formattedHireDate || new Date().toISOString().split("T")[0],
       });
+    } else {
+      // Add mode → blank employee_id; backend assigns it on save.
+      setFormData((prev) => ({ ...prev, employee_id: "" }));
     }
   }, [teacher]);
 
@@ -53,19 +54,16 @@ const TeacherForm = ({ teacher, onSave, onCancel }) => {
       ...prev,
       [name]: value,
     }));
-    // Clear error when user starts typing
     if (errors[name]) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
+      setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.employee_id.trim()) {
+    // Only require employee_id when editing.
+    if (teacher && !formData.employee_id.trim()) {
       newErrors.employee_id = "Employee ID is required";
     }
     if (!formData.first_name.trim()) {
@@ -87,9 +85,15 @@ const TeacherForm = ({ teacher, onSave, onCancel }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      onSave(formData);
+    if (!validateForm()) return;
+
+    // In add mode, drop an empty employee_id so the backend generates one.
+    const payload = { ...formData };
+    if (!teacher && !payload.employee_id?.trim()) {
+      delete payload.employee_id;
     }
+
+    onSave(payload);
   };
 
   return (
@@ -104,11 +108,19 @@ const TeacherForm = ({ teacher, onSave, onCancel }) => {
             name="employee_id"
             value={formData.employee_id}
             onChange={handleChange}
+            readOnly={!teacher}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
               errors.employee_id ? "border-red-500" : "border-gray-300"
-            }`}
-            placeholder="Enter employee ID"
+            } ${!teacher ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""}`}
+            placeholder={
+              teacher ? "e.g., EMP-2026-0001" : "Will be assigned on save"
+            }
           />
+          {!teacher && (
+            <p className="text-xs text-gray-500 mt-1">
+              The employee ID is generated automatically when you save.
+            </p>
+          )}
           {errors.employee_id && (
             <p className="text-red-500 text-sm mt-1">{errors.employee_id}</p>
           )}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { XMarkIcon, UserIcon } from "@heroicons/react/24/outline";
+import InlineCardEnrollStep from "./Inlinecardenrollstep";
 
 const StudentForm = ({
   student,
@@ -7,9 +8,10 @@ const StudentForm = ({
   loadingClasses,
   onSave,
   onCancel,
+  currentUserId,
 }) => {
   const [formData, setFormData] = useState({
-    admission_number: "",
+    admission_number: "", // add mode: blank, backend assigns it. edit mode: filled below.
     first_name: "",
     last_name: "",
     date_of_birth: "",
@@ -27,6 +29,8 @@ const StudentForm = ({
   const [previewUrl, setPreviewUrl] = useState("");
   const [errors, setErrors] = useState({});
   const fileInputRef = useRef(null);
+  const [savedStudent, setSavedStudent] = useState(null);
+  const [showCardStep, setShowCardStep] = useState(false);
 
   // Helper function to format date
   const formatDateForInput = (dateString) => {
@@ -50,7 +54,6 @@ const StudentForm = ({
   const getPhotoUrl = (photoFilename) => {
     if (!photoFilename) return null;
 
-    // If it's already a full URL, return it
     if (
       photoFilename.startsWith("http://") ||
       photoFilename.startsWith("https://")
@@ -58,8 +61,6 @@ const StudentForm = ({
       return photoFilename;
     }
 
-    // Use relative path - this will work in both dev and production
-    // The browser will resolve this relative to the current domain
     return `/uploads/students/${photoFilename}`;
   };
 
@@ -86,12 +87,15 @@ const StudentForm = ({
         photo: null,
       });
 
-      // Set preview if student has a photo - using the helper function
       if (student.photo_filename) {
         setPreviewUrl(getPhotoUrl(student.photo_filename));
       } else {
         setPreviewUrl("");
       }
+    } else {
+      // Add mode → leave admission_number blank; backend assigns it on save.
+      setFormData((prev) => ({ ...prev, admission_number: "" }));
+      setPreviewUrl("");
     }
   }, [student]);
 
@@ -152,7 +156,9 @@ const StudentForm = ({
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.admission_number.trim()) {
+    // Only require admission_number when editing. In add mode, the backend
+    // generates it, so we don't validate it here.
+    if (student && !formData.admission_number.trim()) {
       newErrors.admission_number = "Admission number is required";
     }
     if (!formData.first_name.trim()) {
@@ -183,28 +189,56 @@ const StudentForm = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      const submitData = new FormData();
+    if (!validateForm()) return;
 
-      Object.keys(formData).forEach((key) => {
-        if (formData[key] !== null && formData[key] !== undefined) {
-          if (key === "photo" && formData[key] instanceof File) {
-            submitData.append(key, formData[key]);
-          } else if (key === "has_fee_block" || key === "is_active") {
-            submitData.append(key, formData[key] ? "1" : "0");
-          } else {
-            submitData.append(key, formData[key]);
-          }
+    const submitData = new FormData();
+    Object.keys(formData).forEach((key) => {
+      if (formData[key] !== null && formData[key] !== undefined) {
+        // In add mode, skip an empty admission_number so the backend
+        // generates one instead of seeing an empty string.
+        if (key === "admission_number" && !student && !formData[key].trim()) {
+          return;
         }
-      });
 
-      if (student && !formData.photo && student.photo_filename) {
-        submitData.append("existing_photo", student.photo_filename);
+        if (key === "photo" && formData[key] instanceof File) {
+          submitData.append(key, formData[key]);
+        } else if (key === "has_fee_block" || key === "is_active") {
+          submitData.append(key, formData[key] ? "1" : "0");
+        } else {
+          submitData.append(key, formData[key]);
+        }
       }
+    });
 
-      onSave(submitData);
+    if (student && !formData.photo && student.photo_filename) {
+      submitData.append("existing_photo", student.photo_filename);
+    }
+
+    const result = await onSave(submitData);
+
+    // Only offer card enrollment right after a genuine CREATE and if the
+    // parent returned a saved record with an id.
+    if (!student && result && result.id) {
+      setSavedStudent(result);
+      setShowCardStep(true);
     }
   };
+
+  if (showCardStep && savedStudent) {
+    return (
+      <InlineCardEnrollStep
+        studentId={savedStudent.id}
+        studentName={`${savedStudent.first_name} ${savedStudent.last_name}`}
+        issuedBy={currentUserId}
+         parentName={savedStudent.parent_name}      
+        parentContact={savedStudent.parent_contact} 
+        onDone={() => {
+          setShowCardStep(false);
+          onCancel();
+        }}
+      />
+    );
+  }
 
   return (
     <form
@@ -226,7 +260,6 @@ const StudentForm = ({
                   alt="Student preview"
                   className="h-24 w-24 rounded-full object-cover border-2 border-gray-300"
                   onError={(e) => {
-                    // If image fails to load, show fallback
                     e.target.style.display = "none";
                     const parent = e.target.parentElement;
                     const fallback = document.createElement("div");
@@ -288,11 +321,19 @@ const StudentForm = ({
             name="admission_number"
             value={formData.admission_number}
             onChange={handleChange}
+            readOnly={!student}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
               errors.admission_number ? "border-red-500" : "border-gray-300"
-            }`}
-            placeholder="e.g., ADM001"
+            } ${!student ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""}`}
+            placeholder={
+              student ? "e.g., ADM-2026-0001" : "Will be assigned on save"
+            }
           />
+          {!student && (
+            <p className="text-xs text-gray-500 mt-1">
+              The admission number is generated automatically when you save.
+            </p>
+          )}
           {errors.admission_number && (
             <p className="text-red-500 text-sm mt-1">
               {errors.admission_number}
